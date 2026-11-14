@@ -1,4 +1,8 @@
-﻿<div align="center">
+> **本地增强仓库：** [friends-xiaohuli/HongxueAssistant](https://github.com/friends-xiaohuli/HongxueAssistant)。
+> 原项目 v1.8.0 基底，保留后续测试和文档修复；增加多屏、同屏输入/截图、切屏校验、置顶/沉底/吸附和被 Ban 必带暂停。
+> 原库拉取 upstream，增强版推送 origin，软件更新检查本仓库。详见 [本地增强与同步](docs/LOCAL_ENHANCEMENTS.md)。
+
+<div align="center">
   <img src="docs/images/hongxue-logo-large.png" width="280" alt="鸿雪画框图标"/>
   <h1>鸿雪·卫戍助手</h1>
   <p>Hongxue Stronghold Companion</p>

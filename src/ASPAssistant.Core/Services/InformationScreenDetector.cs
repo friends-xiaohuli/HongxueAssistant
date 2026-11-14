@@ -13,7 +13,7 @@ public sealed class InformationScreenDetector(IOcrEngine ocr, IOcrStrategy strat
     private static readonly (double X, double Y, double W, double H) AdditionalHeaderBand = (0.02, 0.36, 0.70, 0.34);
 
     /// <summary>兜底：整块面板一次扫（两条窄带都没命中时才会用到）。</summary>
-    private static readonly (double X, double Y, double W, double H) WholePanel = (0.05, 0.13, 0.62, 0.38);
+    private static readonly (double X, double Y, double W, double H) WholePanel = (0.05, 0.13, 0.62, 0.70);
 
     public async Task<bool> IsInformationScreenAsync(byte[] screenshot, int width, int height)
     {

@@ -22,4 +22,8 @@ public static class CovenantBanRules
         var all = core.Concat(additional).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
         return all.Count > 0 && all.All(bannedCovenants.Contains);
     }
+    public static bool IsBanned(Operator op, IReadOnlySet<string> bannedCore, IReadOnlySet<string> bannedAdditional, bool selectsCoreGroup)
+        => selectsCoreGroup && op.CoreCovenants.Any(bannedCore.Contains)
+            || IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCore.Concat(bannedAdditional).ToHashSet(StringComparer.Ordinal));
+
 }

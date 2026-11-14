@@ -1,8 +1,9 @@
-﻿// Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
+// Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using ASPAssistant.Core.Models;
+using ASPAssistant.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace ASPAssistant.Core.ViewModels;
@@ -29,6 +30,26 @@ public partial class EnemyViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<string> _rawTexts = [];
+
+    [ObservableProperty]
+    private ObservableCollection<string> _informationPreview = [];
+
+    [ObservableProperty]
+    private string _informationPreviewStatus = "";
+
+    public void ShowInformationPreview(BanCovenantReadResult read, string reason)
+    {
+        InformationPreviewStatus = reason;
+        InformationPreview = new ObservableCollection<string>(
+            read.Core.Select(c => $"核心 · {c.Name}：{(c.IsBanned ? "灰色 / 禁用" : "绿色 / 可用")}")
+                .Concat(read.Additional.Select(c => $"附加 · {c.Name}：{(c.IsBanned ? "灰色 / 禁用" : "绿色 / 可用")}")));
+    }
+
+    public void ClearInformationPreview()
+    {
+        InformationPreview = [];
+        InformationPreviewStatus = "";
+    }
 
     // ── OCR fields ────────────────────────────────────────────────────────────
 

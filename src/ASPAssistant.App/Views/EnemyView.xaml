@@ -29,6 +29,7 @@
                         <MultiDataTrigger.Conditions>
                             <Condition Binding="{Binding BossName}" Value="" />
                             <Condition Binding="{Binding EnemyTypes.Count}" Value="0" />
+                            <Condition Binding="{Binding InformationPreview.Count}" Value="0" />
                         </MultiDataTrigger.Conditions>
                         <Setter Property="Visibility" Value="Visible" />
                     </MultiDataTrigger>
@@ -44,6 +45,7 @@
                         <MultiDataTrigger.Conditions>
                             <Condition Binding="{Binding BossName}" Value="" />
                             <Condition Binding="{Binding EnemyTypes.Count}" Value="0" />
+                            <Condition Binding="{Binding InformationPreview.Count}" Value="0" />
                         </MultiDataTrigger.Conditions>
                         <Setter Property="Visibility" Value="Collapsed" />
                     </MultiDataTrigger>
@@ -51,6 +53,30 @@
             </Style>
         </ScrollViewer.Style>
         <StackPanel Margin="10,10,10,4">
+            <Expander Header="本次盟约预览（尚未应用）" IsExpanded="True"
+                      Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,8">
+                <Expander.Style>
+                    <Style TargetType="Expander">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding InformationPreview.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Expander.Style>
+                <StackPanel Margin="4,6,0,0">
+                    <TextBlock Text="{Binding InformationPreviewStatus}" TextWrapping="Wrap" Margin="0,0,0,6"
+                               Foreground="{DynamicResource WarningTextBrush}" />
+                    <ItemsControl ItemsSource="{Binding InformationPreview}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,0,0,3" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Expander>
+
             <ItemsControl ItemsSource="{Binding UnmatchedEntries}" Margin="0,0,0,6">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>

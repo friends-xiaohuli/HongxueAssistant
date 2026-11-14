@@ -305,14 +305,14 @@ public class LineupPlannerTests
     }
 
     [Fact]
-    public void Plan_ReportsBannedCoreGoalAndUnavailableLockedOperator()
+    public void Plan_ReportsBannedCoreGoalAndIgnoresBannedLockedOperator()
     {
         var planner = new LineupPlanner([Op("甲", ["炎"])], [Core("炎")]);
 
         planner.Plan(new PlannerRequest { Goals = [new PlannerGoal("炎", 1, 3, false, true)], BannedCovenants = new HashSet<string> { "炎" } })
             .Error.Should().Contain("炎");
         planner.Plan(new PlannerRequest { Goals = [new PlannerGoal("炎", 1, 1, false, true)], LockedOperators = new HashSet<string> { "甲" }, BannedOperators = new HashSet<string> { "甲" } })
-            .Error.Should().Contain("甲");
+            .Error.Should().BeNull();
     }
 
     [Fact]

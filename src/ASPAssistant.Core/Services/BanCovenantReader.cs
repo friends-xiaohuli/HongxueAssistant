@@ -1,4 +1,4 @@
-﻿// Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
+// Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
 using ASPAssistant.Core.GameModes;
 
 namespace ASPAssistant.Core.Services;
@@ -21,7 +21,8 @@ public sealed record BanCovenantReadResult(
     bool SawAdditionalHeader = false,
     bool HasIncompleteCoreRows = false,
     bool HasIncompleteAdditionalRows = false,
-    bool NeedsScroll = false)
+    bool NeedsScroll = false,
+    bool SelectsCoreGroup = false)
 {
     public bool HasIncompleteRows => HasIncompleteCoreRows || HasIncompleteAdditionalRows;
     public static readonly BanCovenantReadResult Empty = new([], [], [], []);
@@ -83,6 +84,7 @@ public static class BanCovenantReader
             .OrderBy(t => t.Box.Y).FirstOrDefault();
         var additionalHeader = panel.Where(t => NormalizeHeader(t.Text).Contains(AdditionalHeaderText))
             .OrderBy(t => t.Box.Y).FirstOrDefault();
+        var selectsCoreGroup = panel.Any(t => t.Text.Contains("请选择一组") || t.Text.Contains("未被选择的盟约"));
         if (additionalHeader is not null
             && (coreHeader is null || additionalHeader.Box.Y > coreHeader.Box.Y))
         {
@@ -102,7 +104,8 @@ public static class BanCovenantReader
                 (core.Rows > 1 || coreHeader is null) && banHeader is null && additional.Covenants.Count < additionalCovenantNames.Count
                     && (BanIconGrid.HasClippedBottomRow(pixels!)
                     || additional.HasIncompleteRows
-                    || additional.Unnamed.Any(p => p.Y / imgHeight > .88)));
+                    || additional.Unnamed.Any(p => p.Y / imgHeight > .88)),
+                SelectsCoreGroup: selectsCoreGroup);
         }
 
         // A title may be unreadable in the broad OCR pass; retry the existing narrow regions.
@@ -116,7 +119,7 @@ public static class BanCovenantReader
         return new BanCovenantReadResult(fixedCore.Covenants, fixedAdditional.Covenants,
             fixedCore.Unnamed, fixedAdditional.Unnamed, fixedCore.Slots, fixedAdditional.Slots,
             fixedCore.SawHeader, fixedAdditional.SawHeader,
-            fixedCore.HasIncompleteRows, fixedAdditional.HasIncompleteRows);
+            fixedCore.HasIncompleteRows, fixedAdditional.HasIncompleteRows, SelectsCoreGroup: selectsCoreGroup);
     }
 
     private sealed record SectionRead(

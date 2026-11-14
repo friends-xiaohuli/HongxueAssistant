@@ -136,6 +136,9 @@ public sealed partial class PlannerLockedOperator : ObservableObject
     public Operator Operator { get; }
     public string Initial => Name.Length > 0 ? Name[..1] : "?";
     public IRelayCommand RemoveCommand { get; }
+
+    [ObservableProperty]
+    private bool _isUnavailable;
 }
 
 public sealed class PlannerOperatorItem
@@ -502,6 +505,8 @@ public partial class LineupPlannerViewModel : ObservableObject
 
     public bool HasGoals => SelectedGoalCount > 0;
     public bool HasLocked => LockedOperators.Count > 0;
+    public int ActiveLockedCount => LockedOperators.Count(l => !IsUnavailable(l.Operator));
+    public bool HasActiveLocked => ActiveLockedCount > 0;
     public bool HasVisibleLineups => VisibleLineups.Count > 0;
     public string EmptyResultText => SelectedGoalCount == 0 ? "先在“目标”里选择盟约。"
         : IsBusy ? "正在搜索…"
@@ -541,13 +546,16 @@ public partial class LineupPlannerViewModel : ObservableObject
 
     partial void OnOnlyCurrentRunChanged(bool value) => ApplyVisibility();
 
+    private bool IsUnavailable(Operator op) => !op.IsAvailableForSelection
+        || _banVm.IsBanned(op.Name) || _planner.IsExcludedByBans(op, _banVm.BannedCovenants);
+
     partial void OnLockSearchTextChanged(string value)
     {
         LockSuggestions.Clear();
         var text = value.Trim();
         if (text.Length == 0) return;
         foreach (var op in _operators
-                     .Where(o => o.IsAvailableForSelection && o.Name.Contains(text, StringComparison.OrdinalIgnoreCase) && LockedOperators.All(l => l.Name != o.Name))
+                     .Where(o => !IsUnavailable(o) && o.Name.Contains(text, StringComparison.OrdinalIgnoreCase) && LockedOperators.All(l => l.Name != o.Name))
                      .OrderBy(o => o.Name.StartsWith(text, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                      .ThenBy(o => o.Name.Length)
                      .Take(8))
@@ -591,11 +599,12 @@ public partial class LineupPlannerViewModel : ObservableObject
             op = LockSuggestions.FirstOrDefault();
             if (op is null) return false;
         }
+        if (IsUnavailable(op)) return false;
         if (LockedOperators.Any(l => l.Name == op.Name)) { LockSearchText = ""; return false; }
-        if (LockedOperators.Count >= LineupPlanner.MaxLockedOperators) return false;
+        if (ActiveLockedCount >= LineupPlanner.MaxLockedOperators) return false;
         LockedOperators.Add(new PlannerLockedOperator(op, RemoveLocked));
         LockSearchText = "";
-        OnPropertyChanged(nameof(HasLocked));
+        RefreshLockedAvailability();
         RequestRecompute();
         return true;
     }
@@ -607,13 +616,13 @@ public partial class LineupPlannerViewModel : ObservableObject
         var changed = false;
         foreach (var name in names)
         {
-            if (LockedOperators.Count >= LineupPlanner.MaxLockedOperators) break;
-            if (!_operatorByName.TryGetValue(name, out var op) || LockedOperators.Any(l => l.Name == name)) continue;
+            if (ActiveLockedCount >= LineupPlanner.MaxLockedOperators) break;
+            if (!_operatorByName.TryGetValue(name, out var op) || IsUnavailable(op) || LockedOperators.Any(l => l.Name == name)) continue;
             LockedOperators.Add(new PlannerLockedOperator(op, RemoveLocked));
             changed = true;
         }
         if (!changed) return;
-        OnPropertyChanged(nameof(HasLocked));
+        RefreshLockedAvailability();
         RequestRecompute();
     }
 
@@ -622,7 +631,7 @@ public partial class LineupPlannerViewModel : ObservableObject
     {
         if (LockedOperators.Count == 0) return;
         LockedOperators.Clear();
-        OnPropertyChanged(nameof(HasLocked));
+        RefreshLockedAvailability();
         RequestRecompute();
     }
 
@@ -641,8 +650,16 @@ public partial class LineupPlannerViewModel : ObservableObject
     private void RemoveLocked(PlannerLockedOperator item)
     {
         if (!LockedOperators.Remove(item)) return;
-        OnPropertyChanged(nameof(HasLocked));
+        RefreshLockedAvailability();
         RequestRecompute();
+    }
+
+    private void RefreshLockedAvailability()
+    {
+        foreach (var item in LockedOperators) item.IsUnavailable = IsUnavailable(item.Operator);
+        OnPropertyChanged(nameof(HasLocked));
+        OnPropertyChanged(nameof(ActiveLockedCount));
+        OnPropertyChanged(nameof(HasActiveLocked));
     }
 
     // ── External inputs ─────────────────────────────────────────────────────
@@ -689,6 +706,8 @@ public partial class LineupPlannerViewModel : ObservableObject
             else if (c.Level == 2 && !c.CanPlanSecond) { c.Level = 1; goalDropped = true; }
         }
         if (goalDropped) RefreshGoalChips();
+        RefreshLockedAvailability();
+        OnLockSearchTextChanged(LockSearchText);
         UpdateRunInfo();
     }
 
@@ -931,7 +950,7 @@ public partial class LineupPlannerViewModel : ObservableObject
             Goals = AllCovenants.Where(c => c.IsSelected).Select(c => LineupPlanner.CreateGoal(c.Info, c.Level)).ToList(),
             BannedCovenants = bannedCovenants,
             BannedOperators = new HashSet<string>(_banVm.BannedNames, StringComparer.Ordinal),
-            LockedOperators = LockedOperators.Select(l => l.Name).ToHashSet(StringComparer.Ordinal),
+            LockedOperators = LockedOperators.Where(l => !IsUnavailable(l.Operator)).Select(l => l.Name).ToHashSet(StringComparer.Ordinal),
             TransformAllowed = _planner.DefaultTransformAllowed(bannedCovenants).Where(_equipmentRules.CanTransformInto).ToHashSet(),
             PeopleOptions = PeopleOptions,
             TransformOptions = TransformOptions,

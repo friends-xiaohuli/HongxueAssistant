@@ -31,7 +31,7 @@ public partial class UpdateService
     public const string FeedOverrideVariable = "ASPA_UPDATE_FEED";
 
     public const string DefaultFeedUrl =
-        "https://api.github.com/repos/bingyunhe/hongxue-stronghold-companion/releases/latest";
+        "https://api.github.com/repos/friends-xiaohuli/HongxueAssistant/releases/latest";
 
     private const string PackageSuffix = "-win-x64.zip";
     private const string ChecksumsAssetName = "SHA256SUMS.txt";

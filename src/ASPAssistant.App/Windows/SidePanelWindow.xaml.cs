@@ -66,6 +66,7 @@ public partial class SidePanelWindow : Window
     private WindowState _previousWindowState;
     private WindowState? _stateBeforeGameMinimized;
     private bool _isUserMovingOrSizing;
+    private RECT? _moveStartedBounds;
 
     // Global hotkey (Ctrl+Shift+/) for manual screenshot scan
     private const int HotkeyIdManualScan = 0x4153; // 'AS' — arbitrary unique app-scoped ID
@@ -265,10 +266,24 @@ public partial class SidePanelWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == User32.WM_ENTERSIZEMOVE) _isUserMovingOrSizing = true;
+        if (msg == User32.WM_ENTERSIZEMOVE)
+        {
+            _isUserMovingOrSizing = true;
+            _moveStartedBounds = User32.ReadWindowRect(hwnd);
+        }
         if (msg == User32.WM_EXITSIZEMOVE)
         {
             _isUserMovingOrSizing = false;
+            var bounds = User32.ReadWindowRect(hwnd);
+            if (_moveStartedBounds is { } started && started.Width == bounds.Width && started.Height == bounds.Height
+                && (started.Left != bounds.Left || started.Top != bounds.Top))
+            {
+                var work = User32.GetMonitorGeometry(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2).WorkArea;
+                _isProgrammaticChange = true;
+                try { User32.SetWindowBounds(hwnd, WindowGeometry.SnapBounds(bounds, work, User32.GetWindowDpiScale(hwnd), _lastGameRect)); }
+                finally { _isProgrammaticChange = false; }
+            }
+            _moveStartedBounds = null;
             var placement = CaptureSidePanelPlacement();
             _userHeightDip = placement.HeightDip;
             _positionSettings = _positionSettings with
@@ -521,6 +536,7 @@ public partial class SidePanelWindow : Window
 
     public void SetGameMinimized(bool minimized)
     {
+        if (minimized) ApplyTopmost(false);
         WindowState target;
         if (minimized)
         {
@@ -543,7 +559,48 @@ public partial class SidePanelWindow : Window
         finally { _isProgrammaticChange = false; }
     }
 
-    public void ClearGamePosition() => _lastGameRect = null;
+    public void ClearGamePosition()
+    {
+        _lastGameRect = null;
+        ApplyTopmost(false);
+    }
+
+    /// <summary>Only game focus raises the panel; interacting with it preserves that state.</summary>
+    public void UpdateTopmost(IntPtr gameWindow, IntPtr foregroundWindow)
+    {
+        var panel = new WindowInteropHelper(this).Handle;
+        var panelHasFocus = false;
+        // Walk owners instead of GA_ROOTOWNER: WPF may give a taskbar-hidden panel
+        // its own hidden owner, which should not break dialog interaction.
+        for (var window = foregroundWindow; window != IntPtr.Zero && panel != IntPtr.Zero;
+            window = User32.GetWindow(window, 4)) // GW_OWNER
+        {
+            if (window != panel) continue;
+            panelHasFocus = true;
+            break;
+        }
+        var shouldBeTopmost = gameWindow != IntPtr.Zero && User32.IsWindow(gameWindow)
+            && !IsAssistantHidden && !User32.IsIconic(gameWindow) && WindowState != WindowState.Minimized
+            && (foregroundWindow == gameWindow || Topmost && panelHasFocus);
+        ApplyTopmost(shouldBeTopmost);
+    }
+
+    private void ApplyTopmost(bool topmost)
+    {
+        var changed = Topmost != topmost;
+        if (changed) Topmost = topmost;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero || !User32.IsWindow(handle)) return;
+        // WPF may defer its native change while a restored window recreates its render
+        // target. Keep both states consistent without repeatedly raising/lowering it.
+        var nativeTopmost = (User32.GetWindowLong(handle, User32.GWL_EXSTYLE) & 0x00000008) != 0;
+        if (topmost && !nativeTopmost) User32.MakeWindowTopmost(handle);
+        else if (!topmost && (changed || nativeTopmost))
+        {
+            // HWND_NOTOPMOST alone puts the panel at the front of normal windows.
+            User32.SendWindowToBottom(handle);
+        }
+    }
 
     public void UpdatePosition(RECT gameRect, bool isFullscreen)
     {
@@ -660,7 +717,7 @@ public partial class SidePanelWindow : Window
 
     private void OnTitleBarDrag(object sender, MouseButtonEventArgs e)
     {
-        if (_positionSettings.FreeMovement && e.LeftButton == MouseButtonState.Pressed)
+        if (e.LeftButton == MouseButtonState.Pressed)
             DragMove();
     }
 

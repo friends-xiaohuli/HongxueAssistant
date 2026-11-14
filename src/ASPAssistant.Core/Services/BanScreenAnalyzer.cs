@@ -15,7 +15,7 @@ public record CovenantBanState(string Name, bool IsBanned, double X);
 public record BanScreenResult(
     IReadOnlyList<CovenantBanState> CoreCovenants,
     IReadOnlyList<CovenantBanState> AdditionalCovenants,
-    string? EnemyFaction);
+    string? EnemyFaction, bool SelectsCoreGroup = false);
 
 /// <summary>
 /// Orchestrates the ban-screen analysis: one screenshot of the "确认本局信息" screen,
@@ -69,6 +69,12 @@ public sealed class BanScreenAnalyzer
 
     // Re-entry guard: only one analysis can run at a time.
     private int _running;
+    private readonly InformationReadSession _readSession = new();
+    private readonly Func<long>? _getCaptureRevision;
+    private long? _lastCaptureRevision;
+    public bool HasPendingRead => _readSession.IsPending;
+    public void ResetPending() { _readSession.Reset(); _lastShotHash = null; }
+    public event Action<BanCovenantReadResult, string>? AnalysisPreviewAvailable;
 
     // 同一张截图重复点击时直接复用上次结果（截图字节哈希相等即视为同一画面）。
     private string? _lastShotHash;
@@ -83,7 +89,8 @@ public sealed class BanScreenAnalyzer
         EnemyRecognizer enemyRecognizer,
         IReadOnlyList<Operator> operators,
         IReadOnlyList<string> coreCovenantNames,
-        IReadOnlyList<string> additionalCovenantNames)
+        IReadOnlyList<string> additionalCovenantNames,
+        Func<long>? getCaptureRevision = null)
     {
         _captureInformationScreen = captureInformationScreen;
         _ocr = ocr;
@@ -93,6 +100,7 @@ public sealed class BanScreenAnalyzer
         _operators = operators.Where(o => o.RequiredStrategyId.Length == 0).ToList();
         _coreCovenantNames = coreCovenantNames;
         _additionalCovenantNames = additionalCovenantNames;
+        _getCaptureRevision = getCaptureRevision;
     }
 
     // ── Public entry point ────────────────────────────────────────────────────
@@ -125,8 +133,9 @@ public sealed class BanScreenAnalyzer
             }
 
             var (rawWidth, rawHeight) = GetPngDimensions(shot);
+            var captureRevision = _getCaptureRevision?.Invoke();
             var shotHash = HashShot(shot);
-            if (_lastResult is not null && shotHash == _lastShotHash)
+            if (_lastResult is not null && shotHash == _lastShotHash && captureRevision == _lastCaptureRevision)
             {
                 AppLogger.Info("BanAnalyzer", "Identical screenshot, reusing the previous analysis");
                 if (PrepareNewRunAsync is { } cachedPrepare && await _informationDetector.IsOpeningScreenAsync(shot, rawWidth, rawHeight))
@@ -147,12 +156,23 @@ public sealed class BanScreenAnalyzer
                 AppConsole.WriteLine($"[BanAnalyzer] 截图 {rawWidth}×{rawHeight} → 放大到 {imgWidth}×{imgHeight}");
             AppConsole.WriteLine($"[BanAnalyzer] 截图完成 ({imgWidth}×{imgHeight})");
 
+            var sessionEnemy = await _enemyRecognizer.RecognizeAsync(shot, imgWidth, imgHeight);
             BanCovenantReadResult read;
+            bool completePool = false;
+            string poolReason = "";
             BanCovenantReadResult? completeCore = null;
             for (var scrolls = 0; ; scrolls++)
             {
                 read = await BanCovenantReader.ReadAsync(_ocr, _ocrStrategy, shot, imgWidth, imgHeight,
                     _coreCovenantNames, _additionalCovenantNames);
+                if (_getCaptureRevision is not null && captureRevision != _getCaptureRevision())
+                {
+                    ResetPending();
+                    AnalysisFailed?.Invoke("游戏屏幕已切换，未替换结果，请在当前页面重新录入。");
+                    return;
+                }
+                completePool = _readSession.TryComplete(read, captureRevision ?? 0, sessionEnemy?.BossName, out var poolRead, out poolReason);
+                if (completePool) { read = poolRead; break; }
                 if (completeCore is null && read.SawCoreHeader && !read.HasIncompleteCoreRows
                     && read.UnnamedCore.Count == 0 && read.Core.Count >= 6
                     && (read.CoreSlots == 0 || read.Core.Count == read.CoreSlots)
@@ -173,7 +193,8 @@ public sealed class BanScreenAnalyzer
                         CoreSlots = completeCore.CoreSlots,
                         UnnamedCore = completeCore.UnnamedCore,
                         SawCoreHeader = true,
-                        HasIncompleteCoreRows = false
+                        HasIncompleteCoreRows = false,
+                        SelectsCoreGroup = completeCore.SelectsCoreGroup
                     };
                 }
                 AppLogger.Info("BanAnalyzer", $"Panel read after {scrolls} scroll(s): core={read.Core.Count}, additional={read.Additional.Count}, incompleteAdditional={read.HasIncompleteAdditionalRows}, needsScroll={read.NeedsScroll}");
@@ -183,7 +204,8 @@ public sealed class BanScreenAnalyzer
                     || !await _informationDetector.IsOpeningScreenAsync(shot, imgWidth, imgHeight))
                 {
                     AppLogger.Warn("BanAnalyzer", scrollMessage);
-                    AnalysisFailed?.Invoke(scrollMessage);
+                    AnalysisPreviewAvailable?.Invoke(read, poolReason);
+                    AnalysisFailed?.Invoke(poolReason + " 请滚动到末行名称完整可见后重试。");
                     return;
                 }
                 var next = await scroll();
@@ -199,6 +221,12 @@ public sealed class BanScreenAnalyzer
                 AppLogger.SaveArtifact("ban-scroll", ImageBytes.ToPng(shot), ".png");
             }
             scrollMessage = null;
+            if (!completePool)
+            {
+                AnalysisPreviewAvailable?.Invoke(read, poolReason);
+                AnalysisFailed?.Invoke(poolReason);
+                return;
+            }
 
             // 标题判定已经包含在上面那次 OCR 里（省掉一次独立的检测调用）；
             // 只有标题缺失时才用检测器区分“不是信息页”和“信息页被滚动”。
@@ -230,12 +258,12 @@ public sealed class BanScreenAnalyzer
                     : $"本次信息未完整读出（核心 {read.Core.Count}、附加 {read.Additional.Count}、未命名 {unnamed}），未替换现有结果；请保持页面完整可见后重试。");
                 return;
             }
-            var enemy = await _enemyRecognizer.RecognizeAsync(shot, imgWidth, imgHeight);
+            var enemy = sessionEnemy;
             var hasEnemy = enemy is not null && enemy.BossName.Length > 0 && enemy.EnemyTypes.Count > 0;
             var enemyFaction = hasEnemy ? enemy!.BossName : null;
 
             sw.Stop();
-            var result = new BanScreenResult(read.Core, read.Additional, enemyFaction);
+            var result = new BanScreenResult(read.Core, read.Additional, enemyFaction, read.SelectsCoreGroup);
             if (PrepareNewRunAsync is { } prepare)
             {
                 var bansChanged = _lastResult is not null
@@ -246,6 +274,10 @@ public sealed class BanScreenAnalyzer
                 if (bansChanged || await _informationDetector.IsOpeningScreenAsync(shot, imgWidth, imgHeight))
                     await prepare(bansChanged);
             }
+            if (_getCaptureRevision is not null && captureRevision != _getCaptureRevision())
+            {
+                ResetPending(); AnalysisFailed?.Invoke("游戏屏幕已切换，未替换结果，请重试。"); return;
+            }
             var autoBans = ComputeAutoBans(result);
             LogRecognitionSummary(result, autoBans);
             AutoBanListComputed?.Invoke(autoBans);
@@ -253,6 +285,7 @@ public sealed class BanScreenAnalyzer
             else AppLogger.Warn("BanAnalyzer", "Covenant Ban read succeeded, but enemy region was incomplete; publishing covenant result only");
             LogResults(result, sw.ElapsedMilliseconds);
 
+            _lastCaptureRevision = captureRevision;
             _lastShotHash = shotHash;
             _lastResult = result;
             _lastAutoBans = autoBans;
@@ -312,7 +345,8 @@ public sealed class BanScreenAnalyzer
                 continue;
 
             // Same rule as the planner: unavailable only when every covenant of the operator is banned.
-            if (CovenantBanRules.IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCovenants))
+            if (result.SelectsCoreGroup && op.CoreCovenants.Any(bannedCoreCovenants.Contains)
+                || CovenantBanRules.IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCovenants))
                 autoBannedOperators.Add(op.Name);
         }
 

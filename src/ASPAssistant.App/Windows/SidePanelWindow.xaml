@@ -9,7 +9,7 @@
         WindowStyle="None"
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="True"
-        Topmost="True"
+        Topmost="False"
         Cursor="Arrow"
         Icon="{StaticResource AspaLogo}"
         Background="{DynamicResource PanelBackgroundBrush}">

@@ -210,6 +210,14 @@
                         </StackPanel>
                     </Border>
 
+                    <CheckBox x:Name="FollowFocusedScreen" Content="自动跟随正在操作的明日方舟页面"
+                              Margin="0,12,0,4" Foreground="{DynamicResource TextPrimaryBrush}"
+                              Checked="OnFollowChanged" Unchecked="OnFollowChanged" />
+                    <TextBlock Text="游戏屏幕（关闭自动跟随后可手动选择官服 / B服）" Style="{StaticResource Caption}" Margin="0,6,0,4" />
+                    <DockPanel>
+                        <Button Content="刷新屏幕" DockPanel.Dock="Right" Style="{StaticResource DialogSecondaryButton}" Click="OnRefreshScreens" />
+                        <ComboBox x:Name="ScreenSelector" DisplayMemberPath="Label" Margin="0,0,6,0" Height="32" SelectionChanged="OnInputChanged" />
+                    </DockPanel>
                     <DockPanel Margin="0,14,0,6">
                         <TextBlock DockPanel.Dock="Right" Text="叠加层跟随它移动、缩放" Style="{StaticResource Hint}" VerticalAlignment="Center" />
                         <TextBlock Text="游戏窗口" Style="{StaticResource Caption}" />

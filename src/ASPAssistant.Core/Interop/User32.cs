@@ -36,6 +36,9 @@ public static class User32
     [DllImport("user32.dll")]
     public static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
 
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
+
     public static string GetWindowTitle(IntPtr hwnd)
     {
         var text = new StringBuilder(512);
@@ -92,6 +95,22 @@ public static class User32
             && current.Right == bounds.Right && current.Bottom == bounds.Bottom)
             return;
         if (!SetWindowPos(hwnd, IntPtr.Zero, bounds.Left, bounds.Top, bounds.Width, bounds.Height, 0x0004 | 0x0010))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    /// <summary>Places the window below other windows without moving, resizing or activating it.</summary>
+    public static void SendWindowToBottom(IntPtr hwnd)
+    {
+        const uint flags = 0x0001 | 0x0002 | 0x0010; // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+        if (!SetWindowPos(hwnd, new IntPtr(1), 0, 0, 0, 0, flags)) // HWND_BOTTOM
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    /// <summary>Raises the window above normal windows without activating or moving it.</summary>
+    public static void MakeWindowTopmost(IntPtr hwnd)
+    {
+        const uint flags = 0x0001 | 0x0002 | 0x0010 | 0x0200; // SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+        if (!SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, flags)) // HWND_TOPMOST
             throw new Win32Exception(Marshal.GetLastWin32Error());
     }
 

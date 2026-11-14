@@ -79,7 +79,6 @@ public sealed class LineupPlanner
         // reach its activation count, so only banned core covenants are rejected as targets.
         var bannedGoal = request.Goals.FirstOrDefault(g => g.IsCore && request.BannedCovenants.Contains(g.Name));
         if (bannedGoal is not null) return new PlannerResult { Error = $"核心盟约“{bannedGoal.Name}”本局已被 Ban。" };
-        if (request.LockedOperators.Count > MaxLockedOperators) return new PlannerResult { Error = $"必带干员不能超过 {MaxLockedOperators} 人。" };
 
         var candidates = _operators.Where(o => o.IsAvailableForSelection)
             .Where(o => !request.BannedOperators.Contains(o.Name))
@@ -88,9 +87,16 @@ public sealed class LineupPlanner
         var indexByName = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < candidates.Count; i++) indexByName.TryAdd(candidates[i].Name, i);
 
-        var missingLocked = request.LockedOperators.FirstOrDefault(n => !indexByName.ContainsKey(n));
+        var unavailable = _operators.Where(o => request.BannedOperators.Contains(o.Name)
+            || request.ExcludeMixedBannedOperators && IsExcludedByBans(o, request.BannedCovenants))
+            .Select(o => o.Name).ToHashSet(StringComparer.Ordinal);
+        var missingLocked = request.LockedOperators.FirstOrDefault(n => !indexByName.ContainsKey(n)
+            && !request.BannedOperators.Contains(n) && !unavailable.Contains(n));
         if (missingLocked is not null)
             return new PlannerResult { Error = $"必带干员“{missingLocked}”本局不可用（被禁用），请解除锁定。", CandidateCount = candidates.Count };
+
+        var locked = request.LockedOperators.Where(indexByName.ContainsKey).Select(n => indexByName[n]).ToList();
+        if (locked.Count > MaxLockedOperators) return new PlannerResult { Error = $"必带干员不能超过 {MaxLockedOperators} 人。" };
 
         var allowed = _covenants.Select(c => c.Name)
             .Where(n => request.TransformAllowed.Contains(n) && !request.BannedCovenants.Contains(n) && !NoTransform.Contains(n))
@@ -99,7 +105,7 @@ public sealed class LineupPlanner
         allowed.AddRange(request.TransformAllowed.Where(n => !allowed.Contains(n) && !request.BannedCovenants.Contains(n) && !NoTransform.Contains(n) && _covenants.All(c => c.Name != n)));
 
         var ctx = new SearchContext(request, candidates, allowed, _covenants,
-            [.. request.LockedOperators.Select(n => indexByName[n])], maxResultsPerVariant, maxNodes, cancellationToken);
+            locked, maxResultsPerVariant, maxNodes, cancellationToken);
         var variants = new List<PlannerVariantResult>();
         foreach (var transforms in request.TransformOptions)
             foreach (var people in request.PeopleOptions)

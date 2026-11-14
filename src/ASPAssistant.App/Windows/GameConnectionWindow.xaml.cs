@@ -24,6 +24,7 @@ public partial class GameConnectionWindow : Window
     private readonly SettingsManager _settings;
     private bool _busy;
     private bool _loading = true;
+    private int _screenRequest;
     /// <summary>An ADB connection that passed the test for the current fields.</summary>
     private GameConnectionService? _tested;
 
@@ -46,6 +47,7 @@ public partial class GameConnectionWindow : Window
         var saved = capture.Connection.Settings;
         AdbPathBox.Text = saved.AdbPath;
         AdbSerialBox.Text = saved.AdbSerial;
+        FollowFocusedScreen.IsChecked = saved.FollowFocusedGame;
         // A saved manual address is only visible in the manual section, so open it.
         ManualToggle.IsChecked = !string.IsNullOrWhiteSpace(saved.AdbSerial);
         RefreshWindows();
@@ -55,6 +57,7 @@ public partial class GameConnectionWindow : Window
         UpdateMode();
         if (capture.Connection.IsAdb) SetStatus(Tone.Neutral, "当前连接", capture.Connection.Status);
         Closing += (_, e) => e.Cancel = _busy;
+        if (capture.Connection.IsAdb) _ = RefreshScreensAsync();
         Closed += (_, _) => { if (DialogResult != true) _tested?.Dispose(); };
     }
 
@@ -166,12 +169,13 @@ public partial class GameConnectionWindow : Window
         finally { DiscoverButton.IsEnabled = true; }
     }
 
-    private void OnDeviceSelected(object sender, SelectionChangedEventArgs e)
+    private async void OnDeviceSelected(object sender, SelectionChangedEventArgs e)
     {
         if (DeviceSelector.SelectedItem is not DeviceChoice choice) return;
         AdbPathBox.Text = choice.Device.AdbPath;
         AdbSerialBox.Text = choice.Device.AdbSerial;
         AdbMode.IsChecked = true;
+        await RefreshScreensAsync();
     }
 
     private void OnBrowseAdb(object sender, RoutedEventArgs e)
@@ -192,11 +196,46 @@ public partial class GameConnectionWindow : Window
         if (WindowSelector.SelectedItem is null && choices.Count == 1) WindowSelector.SelectedIndex = 0;
     }
 
+    private void OnFollowChanged(object sender, RoutedEventArgs e)
+    {
+        if (ScreenSelector is null) return;
+        ScreenSelector.IsEnabled = FollowFocusedScreen.IsChecked != true;
+        InvalidateTest();
+    }
+
+    private async void OnRefreshScreens(object sender, RoutedEventArgs e) => await RefreshScreensAsync();
+
+    private async Task RefreshScreensAsync()
+    {
+        var request = ++_screenRequest;
+        var path = AdbPathBox.Text.Trim();
+        var serial = AdbSerialBox.Text.Trim();
+        if (!File.Exists(path) || string.IsNullOrWhiteSpace(serial)) return;
+        SetStatus(Tone.Busy, "正在读取游戏屏幕…", "");
+        try
+        {
+            var screens = await Task.Run(() => new AdbGameScreenSource().FindDisplays(path, serial));
+            if (request != _screenRequest || AdbPathBox.Text.Trim() != path || AdbSerialBox.Text.Trim() != serial) return;
+            var saved = _capture.Connection.Settings;
+            ScreenSelector.ItemsSource = screens;
+            ScreenSelector.SelectedItem = FollowFocusedScreen.IsChecked == true
+                ? screens.FirstOrDefault(s => s.IsFocused) ?? screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName)
+                : screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName && s.DisplayId == saved.AndroidDisplayId)
+                    ?? screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName);
+            if (ScreenSelector.SelectedItem is null && screens.Count == 1) ScreenSelector.SelectedIndex = 0;
+            SetStatus(Tone.Neutral, "游戏屏幕", screens.Count == 0 ? "未发现运行中的明日方舟，请先打开游戏。" : "已读取官服 / B服屏幕，测试截图后应用。");
+        }
+        catch (Exception ex) { if (request == _screenRequest) SetStatus(Tone.Error, "读取屏幕失败", ex.Message); }
+    }
+
     private GameConnectionService NewCandidate(bool adb, DesktopWindowInfo? window) => new(new GameConnectionSettings
     {
         Source = adb ? GameCaptureSource.Adb : GameCaptureSource.Pc,
         AdbPath = AdbPathBox.Text.Trim(),
         AdbSerial = AdbSerialBox.Text.Trim(),
+        AndroidPackageName = (ScreenSelector.SelectedItem as AdbGameDisplay)?.PackageName ?? "",
+        AndroidDisplayId = (ScreenSelector.SelectedItem as AdbGameDisplay)?.DisplayId,
+        FollowFocusedGame = FollowFocusedScreen.IsChecked == true,
         WindowTitle = window?.Name ?? _capture.Connection.Settings.WindowTitle,
     }, window?.Handle ?? IntPtr.Zero);
 
@@ -206,6 +245,11 @@ public partial class GameConnectionWindow : Window
         if (!IsAdb)
         {
             await ApplyAsync(NewCandidate(false, null));
+            return;
+        }
+        if (FollowFocusedScreen.IsChecked != true && ScreenSelector.SelectedItem is not AdbGameDisplay)
+        {
+            SetStatus(Tone.Error, "还没选游戏屏幕", "请刷新屏幕并选择官服或 B服。");
             return;
         }
         if (_tested is not null)

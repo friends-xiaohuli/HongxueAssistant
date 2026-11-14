@@ -41,12 +41,12 @@ public sealed class SoloBanSamplesTests : IDisposable
     private static byte[] Load(string file) =>
         File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "TestData", file));
 
-    private async Task<BanScreenAnalyzer> CreateAnalyzerAsync(byte[] bytes)
+    private async Task<BanScreenAnalyzer> CreateAnalyzerAsync(byte[] bytes, Func<Task<byte[]?>>? capture = null)
     {
         var store = new JsonDataStore(Path.Combine(AppContext.BaseDirectory, "data"));
         var (covenants, _) = await store.LoadCovenantsAsync();
         var strategy = new GarrisonOcrStrategy();
-        return new BanScreenAnalyzer(() => Task.FromResult<byte[]?>(bytes), _ocr, strategy,
+        return new BanScreenAnalyzer(capture ?? (() => Task.FromResult<byte[]?>(bytes)), _ocr, strategy,
             new EnemyRecognizer(_ocr, strategy, new BossDataService()), await store.LoadOperatorsAsync(),
             covenants.Where(c => c.BondType == "SEASON").Select(c => c.Name).ToList(),
             covenants.Where(c => c.BondType != "SEASON").Select(c => c.Name).ToList());
@@ -107,7 +107,7 @@ public sealed class SoloBanSamplesTests : IDisposable
     }
 
     [Fact]
-    public async Task SoloLayoutB_ScrolledPastCoreHeader_WholePipelinePublishes()
+    public async Task SoloLayoutB_ScrolledPastCoreHeaderRequiresTopConfirmation()
     {
         var analyzer = await CreateAnalyzerAsync(Load("single_player2_scrolled.png"));
         BanScreenResult? result = null;
@@ -117,10 +117,38 @@ public sealed class SoloBanSamplesTests : IDisposable
 
         await analyzer.RunAnalysisAsync();
 
-        failure.Should().BeNull();
-        result.Should().NotBeNull();
-        result!.CoreCovenants.Should().HaveCount(10);
-        result.AdditionalCovenants.Should().HaveCount(16);
+        failure.Should().Contain("先回到本局信息顶部");
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task DifferentSoloSamplesCannotCompleteOneAnother()
+    {
+        // These upstream captures have different disabled core groups and enemies.
+        // They validate each layout, but must not be combined as one game's scroll pass.
+        var top = Load("single_player2.png");
+        var lower = Load("single_player2_scrolled.png");
+        var frame = top;
+        var analyzer = await CreateAnalyzerAsync(top, () => Task.FromResult<byte[]?>(frame));
+        var results = new List<BanScreenResult>();
+        var diagnostics = new List<string>();
+        analyzer.AnalysisCompleted += results.Add;
+        analyzer.AnalysisFailed += diagnostics.Add;
+        analyzer.AnalysisPreviewAvailable += (read, reason) => diagnostics.Add(
+            $"{reason}; core={string.Join(',', read.Core.Where(c => c.IsBanned).Select(c => c.Name))}; " +
+            $"additional={read.Additional.Count}; unnamed={read.UnnamedAdditional.Count}; " +
+            $"incomplete={read.HasIncompleteRows}/{read.HasIncompleteCoreRows}; group={read.SelectsCoreGroup}");
+        await analyzer.RunAnalysisAsync();
+        results.Should().BeEmpty();
+        analyzer.HasPendingRead.Should().BeTrue();
+        frame = lower;
+        await analyzer.RunAnalysisAsync();
+        results.Should().BeEmpty();
+        frame = top;
+        await analyzer.RunAnalysisAsync();
+        results.Should().BeEmpty(string.Join(" | ", diagnostics));
+        analyzer.HasPendingRead.Should().BeTrue();
+        diagnostics.Last().Should().Contain("10/16");
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using ASPAssistant.Core.GameModes.GarrisonProtocol;
 using ASPAssistant.Core.Services;
+using ASPAssistant.Core.ViewModels;
 using FluentAssertions;
 using Moq;
 
@@ -12,7 +13,7 @@ public sealed class SoloLayoutCompatibilityTests
     [Theory]
     [InlineData(6, 7)]
     [InlineData(9, 12)]
-    public async Task CompleteVisiblePoolsDoNotRequireKnownSeasonTotals(int coreCount, int additionalCount)
+    public async Task CompleteVisibleUnknownPoolsArePreviewedWithoutReplacingBans(int coreCount, int additionalCount)
     {
         string[] core = ["萨尔贡", "维多利亚", "叙拉古", "卡西米尔", "莱塔尼亚", "炎", "谢拉格", "阿戈尔", "乌萨斯"];
         string[] additional = ["迅捷", "灵巧", "远见", "投资人", "突袭", "调和", "协防干员", "独行", "绝技", "聚合", "奥术", "精准"];
@@ -50,13 +51,21 @@ public sealed class SoloLayoutCompatibilityTests
         var analyzer = new BanScreenAnalyzer(() => Task.FromResult<byte[]?>(bytes), ocr.Object, strategy,
             new EnemyRecognizer(ocr.Object, strategy, new BossDataService()), [], core, additional);
         BanScreenResult? result = null;
+        BanCovenantReadResult? preview = null;
+        var bans = new BanViewModel();
+        bans.SetBans(["原有禁用"]);
         string? failure = null;
+        analyzer.AnalysisPreviewAvailable += (read, _) => preview = read;
+        analyzer.AutoBanListComputed += bans.SetBans;
         analyzer.AnalysisCompleted += r => result = r;
         analyzer.AnalysisFailed += m => failure = m;
         await analyzer.RunAnalysisAsync();
-        failure.Should().BeNull();
-        result.Should().NotBeNull();
-        result!.CoreCovenants.Select(c => c.Name).Should().BeEquivalentTo(core.Take(coreCount));
-        result.AdditionalCovenants.Select(c => c.Name).Should().BeEquivalentTo(additional.Take(additionalCount));
+        failure.Should().Contain("仅供预览");
+        result.Should().BeNull();
+        preview.Should().NotBeNull();
+        preview!.Core.Select(c => c.Name).Should().BeEquivalentTo(core.Take(coreCount));
+        preview.Additional.Select(c => c.Name).Should().BeEquivalentTo(additional.Take(additionalCount));
+        preview.HasIncompleteRows.Should().BeFalse();
+        bans.BannedNames.Should().Equal("原有禁用");
     }
 }

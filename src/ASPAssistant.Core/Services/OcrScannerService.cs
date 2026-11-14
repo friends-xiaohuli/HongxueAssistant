@@ -1,4 +1,4 @@
-﻿// Modified for ASP Assistant Regulation on 2026-11-11; see NOTICE.
+// Modified for ASP Assistant Regulation on 2026-11-11; see NOTICE.
 using System.Threading.Channels;
 using System.Timers;
 using ASPAssistant.Core.GameModes;
@@ -28,6 +28,7 @@ public class OcrScannerService : IDisposable
     private bool _banScreenActive;
     private InformationScreenState _informationState = new();
     private GameConnectionService? _lastConnection;
+    private long _lastCaptureRevision;
     private readonly InformationScreenDetector _informationDetector;
     private int _banScreenAbsentTicks;
     private volatile bool _pauseBanScreenDetection;
@@ -98,6 +99,7 @@ public class OcrScannerService : IDisposable
         _captureScreen = captureScreen;
         _getConnection = getConnection;
         _lastConnection = getConnection?.Invoke();
+        _lastCaptureRevision = _lastConnection?.CaptureRevision ?? 0;
         _ocrStrategy = ocrStrategy;
         _shopReader = shopReader;
         _ocrEngine = ocrEngine;
@@ -155,12 +157,22 @@ public class OcrScannerService : IDisposable
                 GameStateUpdated?.Invoke(_gameState);
             }
             var screenshot = _captureScreen();
-            if (!ReferenceEquals(connection, _getConnection?.Invoke())) return;
+            var revision = connection?.CaptureRevision ?? 0;
+            if (revision != _lastCaptureRevision)
+            {
+                _lastCaptureRevision = revision;
+                _informationState = new InformationScreenState();
+                _banScreenActive = false; _banScreenAbsentTicks = 0;
+                _themeCandidate = null; _themeConfirmations = 0;
+                ClearShopItems();
+                ObserveBoard(null);
+            }
+            if (!IsCurrentCapture(connection, revision)) return;
             if (screenshot == null)
             {
                 _informationState.Suspend();
                 if (connection?.IsAdb == true)
-                    PublishShopItems([]);
+                    ClearShopItems();
                 else
                     // 切换到辅助窗口时暂时无法截图，保留最后一次识别供追踪切换使用。
                     _stabilizer.Reset();
@@ -178,9 +190,9 @@ public class OcrScannerService : IDisposable
             // Ban screen detection runs every tick unless explicitly paused
             // (e.g. when app-owned overlays cover the game window).
             if (!_pauseBanScreenDetection)
-                await DetectBanScreenAsync(screenshot, imgWidth, imgHeight, connection);
+                await DetectBanScreenAsync(screenshot, imgWidth, imgHeight, connection, revision);
 
-            if (!ReferenceEquals(connection, _getConnection?.Invoke())) return;
+            if (!IsCurrentCapture(connection, revision)) return;
 
             if (_pauseBanScreenDetection || _banScreenActive)
             {
@@ -193,9 +205,9 @@ public class OcrScannerService : IDisposable
             ObserveBoard(BoardRecognizer is { } board ? board.Recognize(ImageBytes.ToBmp(screenshot)) : null);
             ReadGameTheme(screenshot);
             var rawItems = await _shopReader.ReadAsync(screenshot, imgWidth, imgHeight, _shopNames);
-            if (!ReferenceEquals(connection, _getConnection?.Invoke())) return;
+            if (!IsCurrentCapture(connection, revision)) return;
             PublishShopItems(rawItems);
-            await ReadTerminalLevelAsync(screenshot, imgWidth, imgHeight);
+            await ReadTerminalLevelAsync(screenshot, imgWidth, imgHeight, connection, revision);
         }
         catch (Exception ex)
         {
@@ -231,10 +243,11 @@ public class OcrScannerService : IDisposable
         GameThemeDetected?.Invoke(theme);
     }
 
-    private async Task ReadTerminalLevelAsync(byte[] screenshot, int width, int height)
+    private async Task ReadTerminalLevelAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long revision)
     {
         if (TerminalReader is null || DateTime.UtcNow < _nextTerminalRead) return;
         var level = await TerminalReader.ReadAsync(screenshot, width, height, ThemeProvider?.Invoke() ?? GameShopTheme.Terminal);
+        if (!IsCurrentCapture(connection, revision)) return;
         // Not visible (battle, menus): look again a little later. Confirming a change reads again soon.
         _nextTerminalRead = DateTime.UtcNow + (level is null ? TerminalReadInterval * 2 : TerminalReadInterval);
         if (level is not null && (level != _terminalTracker.Level || _terminalTracker.IsRestored))
@@ -256,6 +269,18 @@ public class OcrScannerService : IDisposable
         BoardChanged?.Invoke(current);
     }
 
+    private bool IsCurrentCapture(GameConnectionService? connection, long revision) =>
+        ReferenceEquals(connection, _getConnection?.Invoke())
+        && (connection?.RefreshCaptureRevision() ?? 0) == revision;
+
+    private void ClearShopItems()
+    {
+        _stabilizer.Reset();
+        if (_gameState.ShopItems.Count == 0) return;
+        _gameState.ShopItems = [];
+        GameStateUpdated?.Invoke(_gameState);
+    }
+
     private void PublishShopItems(IReadOnlyList<ShopItem> items)
     {
         if (!_stabilizer.TryUpdate(items, out var stableItems))
@@ -269,16 +294,17 @@ public class OcrScannerService : IDisposable
 
     /// <summary>Successful manual recording also consumes this opening screen.</summary>
     public void MarkInformationRecorded() => _informationState.MarkRecorded();
+    public void RetryFailedInformationAttempt() => _informationState.RetryFailedAttempt();
 
     public bool TryStartNewRun(bool bansChanged) => _informationState.TryStartNewRun(bansChanged);
 
-    private async Task DetectBanScreenAsync(byte[] screenshot, int width, int height, GameConnectionService? connection)
+    private async Task DetectBanScreenAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long revision)
     {
         bool opening = await _informationDetector.IsOpeningScreenAsync(screenshot, width, height);
         bool canRearm = !opening && _informationState.IsConsumed
             && (await _informationDetector.IsGameplayAsync(screenshot, width, height)
                 || await _informationDetector.IsRunLobbyAsync(screenshot, width, height));
-        if (_pauseBanScreenDetection || !ReferenceEquals(connection, _getConnection?.Invoke())) return;
+        if (_pauseBanScreenDetection || !IsCurrentCapture(connection, revision)) return;
 
         if (opening)
         {

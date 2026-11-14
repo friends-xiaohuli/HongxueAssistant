@@ -14,6 +14,8 @@ namespace ASPAssistant.Core.Services;
 public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogNames)
 {
     private readonly string[] _names = catalogNames.OrderByDescending(n => n.Length).ToArray();
+    public bool UseMobileLayout { get; set; }
+    private readonly MobileShopReader _mobile = new(engine, catalogNames);
     private volatile GameShopTheme _theme = GameShopTheme.Terminal;
     public GameShopTheme Theme { get => _theme; set => _theme = value; }
 
@@ -22,6 +24,7 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
     {
         if (trackedNames.Count == 0)
             return [];
+        var originalWidth = width; var originalHeight = height;
         var theme = Theme;
 
         using var stream = new MemoryStream(screenshot);
@@ -197,6 +200,11 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
             occurrences.TryGetValue(item.Name, out int occurrence);
             item.Id = $"{item.Name}@{occurrence}";
             occurrences[item.Name] = occurrence + 1;
+        }
+        if (items.Count == 0 && UseMobileLayout)
+        {
+            _mobile.Theme = theme; _mobile.UseMobileLayout = true;
+            return await _mobile.ReadAsync(screenshot, originalWidth, originalHeight, trackedNames);
         }
         return items.Where(i => trackedNames.Contains(i.Name)).ToList();
     }

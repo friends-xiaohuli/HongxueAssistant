@@ -30,6 +30,7 @@ public sealed class GameConnectionTests : IDisposable
             AdbPath = @"C:\模拟器\shell\adb.exe",
             AdbSerial = "127.0.0.1:16384",
             WindowTitle = "MuMu 自定义窗口",
+            AndroidPackageName = "com.hypergryph.arknights.bilibili", AndroidDisplayId = 3, FollowFocusedGame = false,
         };
         await manager.SaveGameConnectionAsync(expected);
         (await manager.LoadGameConnectionAsync()).Should().Be(expected);

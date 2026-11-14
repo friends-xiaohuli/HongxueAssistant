@@ -30,6 +30,9 @@ namespace ASPAssistant.Tests.Views;
 public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
 {
     [Fact]
+    public Task LocalWindowAndSuspendedPicks() => ui.RunAsync(LocalWindowCompatibilityTests.Verify, nameof(LocalWindowAndSuspendedPicks));
+
+    [Fact]
     public async Task UiFailure_ClosesWindowsAndRestoresTheme()
     {
         var closed = false;
