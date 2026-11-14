@@ -49,7 +49,7 @@ def main():
         if path.is_file():
             continue
         filename = f"卫戍协议：盟约_策略发起人_{strategy['initiator']}.png"
-        request = urllib.request.Request(get_prts_media_url(filename), headers={'User-Agent': 'ASPAssistant-Data/1.0'})
+        request = urllib.request.Request(get_prts_media_url(filename), headers={'User-Agent': 'HongxueAssistant-Data/1.0'})
         with urllib.request.urlopen(request, timeout=30) as response:
             content = response.read()
         if not content.startswith(b'\x89PNG\r\n\x1a\n'):

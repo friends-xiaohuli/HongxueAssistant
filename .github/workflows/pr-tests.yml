@@ -48,7 +48,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - name: Run tests
-        run: dotnet test src/ASPAssistant.Tests/ASPAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
+        run: dotnet test src/HongxueAssistant.Tests/HongxueAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
       - name: Record successful test evidence
         shell: pwsh
         run: |

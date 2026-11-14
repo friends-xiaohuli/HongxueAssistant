@@ -1,4 +1,4 @@
-"""Generates src/ASPAssistant.App/Resources/Themes/<Theme>.<Mode>.xaml from the design tokens."""
+"""Generates src/HongxueAssistant.App/Resources/Themes/<Theme>.<Mode>.xaml from the design tokens."""
 import sys, os
 T = {
  ('Terminal','Dark'): dict(dark=True, bg='0D1114', bar='080B0D', barText='E4EAEC', barMuted='93A1A6', barChip='131A1D', barChipBorder='22302F',
@@ -32,7 +32,7 @@ T = {
    final='6CCB94', finalText='86D8A8', trans='F09A5A', transText='F5AE77', ban='EE6B74', banText='F48C93', gold='E2BC5C',
    decor='E58AB8', decorW=2, radius=10, rowRadius=8, num='Silkscreen', scroll='3E3657'),
 }
-P = 'pack://application:,,,/ASPAssistant.App;component/Resources/Fonts/'
+P = 'pack://application:,,,/HongxueAssistant;component/Resources/Fonts/'
 FONT = {'Barlow Semi Condensed': P + '#Barlow Semi Condensed',
         'Oswald': P + '#Oswald, ' + P + '#Oswald SemiBold',
         'Silkscreen': P + '#Silkscreen'}

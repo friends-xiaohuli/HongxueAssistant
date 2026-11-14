@@ -1,6 +1,6 @@
 # 更新记录
 
-记录主要功能变化及开发者需要关注的兼容性影响。已发布版本以 [GitHub Releases](https://github.com/bingyunhe/hongxue-stronghold-companion/releases) 为准。
+记录主要功能变化及开发者需要关注的兼容性影响。已发布版本以 [GitHub Releases](https://github.com/friends-xiaohuli/HongxueAssistant/releases) 为准。
 
 ## v1.8.0 · 2026-11-13
 
@@ -8,7 +8,7 @@
 
 ### 主要改动
 
-- **项目改名**：统一使用“鸿雪·卫戍助手 / Hongxue Stronghold Companion”，仓库名改为 `hongxue-stronghold-companion`。同步窗口左上角、标题、托盘、提示文字、程序产品信息和后续发布包名称。
+- **项目改名**：统一使用“HongxueAssistant / HongxueAssistant”，仓库名改为 `hongxue-stronghold-companion`。同步窗口左上角、标题、托盘、提示文字、程序产品信息和后续发布包名称。
 - **PC 开局识别修复**：录入前尝试将游戏置前，滚轮目标定位到游戏客户区中央的盟约内容区，修复鼠标误移到左上角、面板未实际滚动的问题；滚动后恢复鼠标位置，取得前台失败时不发送滚动输入。
 - **盟约补读与新局识别**：完善单人布局、裁切末行、ADB 滑动不足和过度滚动的处理，保留已完整读取的核心盟约，最多补读三次，结果完整后才录入。调整返回大厅及连续 Ban 变化时的新局判断；局内信息页保持只读。
 - **缩放适配**：改进 4K、桌面 150% 缩放和游戏 90% 界面缩放下的商店、终端等级及信息页识别。
@@ -21,7 +21,7 @@
 
 ### 开发与兼容性
 
-- 改名保留 `ASPAssistant.App.exe`、程序集和命名空间、用户配置目录及单实例标识，使用者无需因品牌改名手动搬迁个人数据。阵容和追踪新增字段仍需按正常升级流程验证旧数据读取。
+- 改名保留 `HongxueAssistant.exe`、程序集和命名空间、用户配置目录及单实例标识，使用者无需因品牌改名手动搬迁个人数据。阵容和追踪新增字段仍需按正常升级流程验证旧数据读取。
 - 正式版本更新源与后续发布包名称使用新仓库名称；既有 Release 和历史包名不在本次整合中重命名。
 - 32 张截图回归样本仅保留本地，不随当前源码树或发布包分发。依赖这些样本的测试使用 `Category=LocalScreenshot` 标记；公开 PR 与 Release CI 排除该类别，其余测试继续运行。既有提交历史未重写。
 - 原贡献者的提交及归属声明保留，具体来源见 [NOTICE](NOTICE)。许可证和第三方归属文件继续随程序提供。
@@ -42,8 +42,8 @@
 在仓库根目录运行公开测试：
 
 ```powershell
-dotnet test src/ASPAssistant.Tests/ASPAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
+dotnet test src/HongxueAssistant.Tests/HongxueAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
 python -m unittest discover -s data/tests -v
 ```
 
-完整截图回归需要另行准备本地样本，按测试引用放入 `src/ASPAssistant.Tests/TestData/`，再去掉上述 .NET 命令的 `--filter` 参数。不要将个人截图、配置、日志或本地维护记录作为缺失测试资源提交。
+完整截图回归需要另行准备本地样本，按测试引用放入 `src/HongxueAssistant.Tests/TestData/`，再去掉上述 .NET 命令的 `--filter` 参数。不要将个人截图、配置、日志或本地维护记录作为缺失测试资源提交。

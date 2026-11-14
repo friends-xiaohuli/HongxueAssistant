@@ -1,6 +1,6 @@
 # 参与贡献
 
-欢迎为鸿雪·卫戍助手反馈问题、提出建议或提交改动。较大的功能、依赖升级和架构调整，请先通过 Issue 说明场景与方案，避免重复开发。
+欢迎为HongxueAssistant反馈问题、提出建议或提交改动。较大的功能、依赖升级和架构调整，请先通过 Issue 说明场景与方案，避免重复开发。
 
 ## 反馈问题与建议
 
@@ -19,12 +19,12 @@
 在仓库根目录执行：
 
 ```powershell
-dotnet restore ASPAssistant.sln
-dotnet test src/ASPAssistant.Tests/ASPAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
+dotnet restore HongxueAssistant.sln
+dotnet test src/HongxueAssistant.Tests/HongxueAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
 
 # 使用独立设置目录试运行，避免影响日用阵容和追踪记录。
-$env:ASPASSISTANT_SETTINGS_DIR = Join-Path $env:TEMP 'hongxue-companion-dev-settings'
-dotnet run --project src/ASPAssistant.App
+$env:HONGXUEASSISTANT_SETTINGS_DIR = Join-Path $env:TEMP 'hongxue-companion-dev-settings'
+dotnet run --project src/HongxueAssistant.App
 ```
 
 上述环境变量仅作用于当前终端及其子进程。请手动退出已运行的日用助手再试运行开发版，不要通过测试脚本强行停止用户进程。

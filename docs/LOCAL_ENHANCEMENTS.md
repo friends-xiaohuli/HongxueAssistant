@@ -28,15 +28,29 @@ main 为增强主线。旧 codex/sync-bing-1.7.1 与独立 bundle 备份保留�
     git fetch upstream --tags
     git log --oneline HEAD..upstream/main
     git merge upstream/main
-    dotnet test src/ASPAssistant.Tests/ASPAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
+    dotnet test src/HongxueAssistant.Tests/HongxueAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
     git push origin main
 
 按功能解决冲突，先检查上游已有修复，不整块覆盖本地连接、规划及窗口补丁。不强推、不重写历史。
 
 ## 构建
 
-    dotnet publish src/ASPAssistant.App/ASPAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.8.0-local.1 -o publish/win-x64
+    dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.8.0-local.1 -o publish/win-x64
 
 保留 data、runtimes、MaaAgentBinary、VC++ 运行库、LICENSE、LICENSE.upstream、NOTICE。
 .tools、publish、bin、obj 和用户设置不提交。更新检查使用本仓库 Releases，上游更新走 Git。
 测试区分公共/本地样本，合成滚动图不算实机证据，未连接模拟器时不声明实机验证。
+
+## 更名兼容
+
+解决方案 HongxueAssistant.sln；项目为 HongxueAssistant.App/Core/Tests；实际 EXE 和应用程序集为 HongxueAssistant.exe / HongxueAssistant.dll。
+默认用户目录改为 HongxueAssistant：首次启动在暂存目录完整复制旧 ASPAssistant 配置和阵容后一次性切换，旧目录保留且不覆盖已存在的新目录。
+旧环境变量与旧单实例锁仅用于升级兼容，不再作为显示名称。检查更新为 friends-xiaohuli/HongxueAssistant 的 Releases。
+
+## 发布检查
+
+    ./tools/Verify-Package.ps1 -PackageDirectory publish/HongxueAssistant
+
+压缩包以 HongxueAssistant 开头并包含单独的 HongxueAssistant 文件夹。
+本地 Release 标签 v1.8.0-local.1、v1.8.0-local.2 按修订号比较；默认更新接口为本仓库 /releases/latest。
+旧目录/环境变量/单实例名称仅在升级兼容代码中保留，未更改原库 URL 的来源归属说明。

@@ -1,0 +1,15 @@
+<!-- Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE. -->
+<Window x:Class="HongxueAssistant.App.Windows.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ASPOverlay"
+        Icon="{StaticResource AspaLogo}"
+        AllowsTransparency="True"
+        WindowStyle="None"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize">
+    <Canvas x:Name="OverlayCanvas" />
+</Window>

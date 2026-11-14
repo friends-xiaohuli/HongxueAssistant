@@ -4,8 +4,8 @@
 
 <div align="center">
   <img src="docs/images/hongxue-logo-large.png" width="280" alt="鸿雪画框图标"/>
-  <h1>鸿雪·卫戍助手</h1>
-  <p>Hongxue Stronghold Companion</p>
+  <h1>HongxueAssistant</h1>
+  <p>HongxueAssistant</p>
   <p>明日方舟·卫戍协议 辅助工具<br/>基于 Moonfair/ASP_Assistant 修改，由 MaaFramework 提供图像识别能力。</p>
   <p>
     <img src="https://img.shields.io/badge/platform-Windows-blue?style=flat-square" alt="Windows"/>
@@ -52,9 +52,9 @@
 
 ## 功能简介
 
-鸿雪·卫戍助手是运行于《明日方舟》游戏窗口旁的侧边辅助工具，提供干员、装备查询，追踪列表、阵容管理、Ban 位录入与站位规划。
+HongxueAssistant是运行于《明日方舟》游戏窗口旁的侧边辅助工具，提供干员、装备查询，追踪列表、阵容管理、Ban 位录入与站位规划。
 
-项目原名 ASP Assistant · Arknights。为保留旧配置与更新兼容性，程序文件仍名为 `ASPAssistant.App.exe`，用户数据目录不变。
+项目原名 HongxueAssistant。为保留旧配置与更新兼容性，程序文件仍名为 `HongxueAssistant.exe`，用户数据目录不变。
 
 ### 阵容规划
 
@@ -172,18 +172,18 @@ ADB 模式使用 MaaFramework 读取游戏截图，游戏被其他窗口遮挡�
 
 当前实测范围为 MuMu 12 的 1920×1080 终端主题商店，已读出四格商品并验证坐标。ADB 模式拒绝竖屏与非 16∶9 画面。其他商店等级、主题和模拟器版本仍需更多实机验证。
 
-开发验证可通过 `ASPASSISTANT_SETTINGS_DIR` 环境变量指定独立设置目录，使用 `dotnet ASPAssistant.App.dll` 启动已构建的托管入口。
+开发验证可通过 `HONGXUEASSISTANT_SETTINGS_DIR` 环境变量指定独立设置目录，使用 `dotnet HongxueAssistant.dll` 启动已构建的托管入口。
 
 ## 获取与构建
 
-无需编译的 Windows x64 独立运行包可在 [Releases](https://github.com/bingyunhe/hongxue-stronghold-companion/releases/latest) 获取。
+无需编译的 Windows x64 独立运行包可在 [Releases](https://github.com/friends-xiaohuli/HongxueAssistant/releases/latest) 获取。
 
 1. 在最新 Release 的 Assets 中下载以 `-win-x64.zip` 结尾的 Windows 包，不要选择 `Source code` 源码压缩包。
 2. 右键“全部解压”到独立目录，保留全部文件和 `data`、`runtimes` 文件夹。
-3. 进入解压后的应用目录，双击 `ASPAssistant.App.exe` 启动；若 ZIP 内有同名顶层文件夹，请先打开该文件夹。无需另外安装 .NET；包内带有识别模型和所需运行库。
+3. 进入解压后的应用目录，双击 `HongxueAssistant.exe` 启动；若 ZIP 内有同名顶层文件夹，请先打开该文件夹。无需另外安装 .NET；包内带有识别模型和所需运行库。
 4. 更新时先退出旧程序，再解压新版。个人追踪与阵容设置存放于本机用户数据目录。
 
-发布页同时提供 `SHA256SUMS.txt`，可用 PowerShell 的 `Get-FileHash` 命令计算所下载 ZIP 的 SHA256 并核对；`PACKAGE-MANIFEST.txt` 记录 CI 解包检查后的版本、资源数量及 ZIP 哈希。详细说明见 [最新发布说明](https://github.com/bingyunhe/hongxue-stronghold-companion/releases/latest)。
+发布页同时提供 `SHA256SUMS.txt`，可用 PowerShell 的 `Get-FileHash` 命令计算所下载 ZIP 的 SHA256 并核对；`PACKAGE-MANIFEST.txt` 记录 CI 解包检查后的版本、资源数量及 ZIP 哈希。详细说明见 [最新发布说明](https://github.com/friends-xiaohuli/HongxueAssistant/releases/latest)。
 
 如果需要从源码构建：
 
@@ -192,9 +192,9 @@ ADB 模式使用 MaaFramework 读取游戏截图，游戏被其他窗口遮挡�
 ```powershell
 git clone https://github.com/bingyunhe/hongxue-stronghold-companion.git
 cd hongxue-stronghold-companion
-dotnet restore ASPAssistant.sln
-dotnet test src/ASPAssistant.Tests/ASPAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
-dotnet run --project src/ASPAssistant.App
+dotnet restore HongxueAssistant.sln
+dotnet test src/HongxueAssistant.Tests/HongxueAssistant.Tests.csproj -c Release --filter "Category!=LocalScreenshot"
+dotnet run --project src/HongxueAssistant.App
 ```
 
 仓库已包含当前 JSON 数据、图标和 OCR 模型，首次运行不需要重新抓取数据。
@@ -203,10 +203,10 @@ dotnet run --project src/ASPAssistant.App
 
 ```powershell
 # 生成需要 .NET Desktop Runtime 的本地版本
-dotnet publish src/ASPAssistant.App/ASPAssistant.App.csproj -c Release --self-contained false -o publish/local
+dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release --self-contained false -o publish/local
 
 # 生成 Windows x64 独立版本
-dotnet publish src/ASPAssistant.App/ASPAssistant.App.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
+dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64
 ```
 
 维护者更新发行说明后，推送 `v` 开头的版本标签即可触发 `.github/workflows/release.yml`。该流程先运行测试，再构建独立运行包、打包运行库与许可证，生成校验文件并发布到 GitHub Releases。
@@ -246,9 +246,9 @@ python fetch_spdatabase.py --skip-bosses --skip-enemies
 │   ├── model/                  # OCR 模型
 │   └── fetch_spdatabase.py      # 数据与图片获取脚本
 ├── src/
-│   ├── ASPAssistant.App/        # WPF 界面
-│   ├── ASPAssistant.Core/       # 业务逻辑与数据层
-│   └── ASPAssistant.Tests/      # 数据、视图模型和 WPF 回归测试
+│   ├── HongxueAssistant.App/        # WPF 界面
+│   ├── HongxueAssistant.Core/       # 业务逻辑与数据层
+│   └── HongxueAssistant.Tests/      # 数据、视图模型和 WPF 回归测试
 ├── docs/images/                # 无个人信息的界面截图
 ├── LICENSE                     # Apache 官方标准 License 2.0 正文
 ├── LICENSE.upstream            # 保留上游许可原文及版权声明
