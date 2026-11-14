@@ -149,12 +149,66 @@ internal static class SklandImportViewTests
             tracking.TrackLineup(savedGrouped);
             tracking.TrackedOperators.Should().HaveCount(20);
             tracking.TrackedOperators.Count(entry => entry.Role == TrackingRole.Final).Should().Be(6);
+            VerifyGuideFlow(operators, calculator);
         }
         finally
         {
             foreach (Window child in panel.OwnedWindows.Cast<Window>().ToArray()) child.Close();
             panel.Close();
             Directory.Delete(directory, true);
+        }
+    }
+
+    private static void VerifyGuideFlow(Operator[] operators, CovenantCalculator calculator)
+    {
+        var source = new Lineup
+        {
+            Name = "完整攻略草稿", SourceUrl = Services.SklandGuideImporterTests.Url,
+            Slots = [new() { OperatorName = "乙", IsElite = true }],
+            Guide = new LineupGuide
+            {
+                GuideId = "123", Title = "攻略流程 · 保留回合阵容和技能模组", Tabs =
+                [
+                    new() { TabType = 1, OperationIdea = "总体思路", Operators = [new() { OperatorName = "乙", ShopLevel = 3, MergeLevel = 1 }] },
+                    new() { TabType = 2, StartRound = 1, EndRound = 4, OperationIdea = "第一行运营思路\n第二行保留完整内容",
+                        Operators = [new() { OperatorName = "甲", ShopLevel = 2, SkillId = "skill-a", SkillName = "示例技能", ModuleId = "module-a", ModuleName = "示例模组" }],
+                        Equipment = [new() { ItemId = "item-a", Name = "独立推荐装备" }],
+                        ActiveBonds = [new() { BondId = "bond-a", Name = "示例盟约" }] }
+                ]
+            }
+        };
+        foreach (var theme in Enum.GetValues<GameShopTheme>())
+        foreach (var night in new[] { false, true })
+        {
+            ThemeManager.Apply(theme, night);
+            var vm = new LineupEditorViewModel(source, operators, [], calculator);
+            var editor = new LineupEditorWindow(vm, [])
+            { Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 };
+            LineupGuideWindow? flow = null;
+            try
+            {
+                editor.Show();
+                ((Button)editor.FindName("GuideFlowButton")).Visibility.Should().Be(Visibility.Visible);
+                flow = new LineupGuideWindow(vm.Guide!, vm.ApplyGuideTab)
+                { Owner = editor, Width = 760, Height = 680, Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 };
+                flow.Show();
+                ((ComboBox)flow.FindName("GuideTabs")).SelectedIndex = 1;
+                flow.UpdateLayout();
+                ((TextBox)flow.FindName("GuideNotesText")).Text.Should().Be("第一行运营思路\n第二行保留完整内容");
+                ((ItemsControl)flow.FindName("GuideOperatorsHost")).Items.Count.Should().Be(1);
+                ((ItemsControl)flow.FindName("GuideEquipmentHost")).Items.Count.Should().Be(1);
+                ((TextBlock)flow.FindName("GuideBondsText")).Text.Should().Be("示例盟约");
+                ((ComboBox)flow.FindName("GuideTargetPhase")).SelectedItem = LineupPhase.前期;
+                ((Button)flow.FindName("ApplyGuideButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ((TextBlock)flow.FindName("GuideApplyStatus")).Text.Should().Contain("已替换前期草稿");
+                vm.FilledCount(LineupPhase.前期).Should().Be(1);
+                source.EarlySlots.Should().BeEmpty();
+                var saved = vm.ToLineup();
+                saved.Guide!.Tabs[1].Operators[0].SkillId.Should().Be("skill-a");
+                saved.EarlySlots.Should().OnlyContain(slot => slot.Equipments.Count == 0);
+                Save(flow, $"complete-flow-{theme}-{night}");
+            }
+            finally { flow?.Close(); editor.Close(); }
         }
     }
 

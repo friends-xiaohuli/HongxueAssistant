@@ -58,7 +58,15 @@ public sealed class SklandGuideImporter(HttpClient http, IReadOnlyList<Operator>
             var lineup = new Lineup
             {
                 Name = guide.GetProperty("title").GetString()!,
-                SourceUrl = $"https://game.skland.com/arknights/stronghold-guide/detail?header=0&guideId={guideId}"
+                SourceUrl = $"https://game.skland.com/arknights/stronghold-guide/detail?header=0&guideId={guideId}",
+                Guide = new LineupGuide
+                {
+                    GuideId = guideId, Title = guide.GetProperty("title").GetString()!,
+                    SeasonId = guide.GetProperty("seasonId").GetString()!,
+                    VersionId = guide.GetProperty("versionId").GetString()!,
+                    StrategyIds = guide.GetProperty("strategyIds").EnumerateArray().Select(id => id.GetString()!).ToList(),
+                    Tabs = tabs.Select(tab => ReadGuideTab(tab, resource)).ToList()
+                }
             };
             var unselectedCustom = new List<string>();
             foreach (var entry in chars)
@@ -109,11 +117,75 @@ public sealed class SklandGuideImporter(HttpClient http, IReadOnlyList<Operator>
             var customNotice = unselectedCustom.Count > 0
                 ? $"尚未选入个人自选：{string.Join("、", unselectedCustom)}。使用前请到干员栏选择，本次不会修改自选名单。"
                 : "";
-            return new(lineup, $"{people}策略 {lineup.Strategies.Count} 项。{customNotice}推荐装备 {equips} 件未绑定到干员，回合讲解 {rounds} 段未导入；请查看来源攻略。技能与模组沿用本地模式数据。检查并保存后才加入我的阵容，不自动追踪。");
+            return new(lineup, $"{people}策略 {lineup.Strategies.Count} 项。{customNotice}推荐装备 {equips} 件、回合讲解 {rounds} 段及总体思路已保留，可在“攻略流程”查看。装备未绑定到干员；技能与模组保留攻略原始选择，规划仍使用本地模式数据。检查并保存后才加入我的阵容，不自动追踪。");
         }
         catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or JsonException)
         {
             throw new InvalidDataException("官方攻略数据格式无法识别，未导入阵容。", ex);
         }
     }
+
+    private static LineupGuideTab ReadGuideTab(JsonElement tab, JsonElement resource)
+    {
+        var result = new LineupGuideTab
+        {
+            TabType = tab.GetProperty("tabType").GetInt32(),
+            StartRound = ReadInt(tab, "startRound"), EndRound = ReadInt(tab, "endRound"),
+            OperationIdea = ReadString(tab, "operationIdea"), SourceData = tab.Clone()
+        };
+        if (tab.TryGetProperty("recChars", out var chars))
+            foreach (var entry in chars.EnumerateArray())
+            {
+                var id = entry.GetProperty("charId").GetString()!;
+                var info = FindResource(resource, "chars", id);
+                var skillId = ReadString(entry, "skillId");
+                var moduleId = ReadString(entry, "moduleId");
+                result.Operators.Add(new LineupGuideOperator
+                {
+                    CharId = id, OperatorName = ReadString(info, "name", id), ShopLevel = ReadInt(info, "shopLevel"),
+                    MergeLevel = ReadInt(entry, "mergeLevel"), SkillId = skillId, ModuleId = moduleId,
+                    SkillName = FindChoiceName(info, "skills", "skillId", skillId),
+                    ModuleName = FindChoiceName(info, "modules", "moduleId", moduleId)
+                });
+            }
+        if (tab.TryGetProperty("recItems", out var items))
+            foreach (var entry in items.EnumerateArray())
+            {
+                var id = entry.GetProperty("itemId").GetString()!;
+                var info = FindResource(resource, "items", id);
+                result.Equipment.Add(new LineupGuideEquipment
+                {
+                    ItemId = id, Name = ReadString(info, "name", id), Description = ReadString(info, "effectDesc")
+                });
+            }
+        if (tab.TryGetProperty("activeBonds", out var active))
+            foreach (var (field, isSeason) in new[] { ("seasonBondIds", true), ("regularBondIds", false) })
+                if (active.TryGetProperty(field, out var ids))
+                    foreach (var entry in ids.EnumerateArray())
+                    {
+                        var id = entry.GetString()!;
+                        result.ActiveBonds.Add(new LineupGuideBond
+                        {
+                            BondId = id, Name = ReadString(FindResource(resource, "bonds", id), "name", id), IsSeason = isSeason
+                        });
+                    }
+        return result;
+    }
+
+    private static JsonElement FindResource(JsonElement resource, string group, string id)
+        => resource.TryGetProperty(group, out var entries) && entries.TryGetProperty(id, out var info) ? info : default;
+
+    private static string ReadString(JsonElement element, string property, string fallback = "")
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value)
+            && value.ValueKind == JsonValueKind.String ? value.GetString() ?? fallback : fallback;
+
+    private static int ReadInt(JsonElement element, string property)
+        => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value)
+            && value.TryGetInt32(out var number) ? number : 0;
+
+    private static string FindChoiceName(JsonElement info, string choices, string idProperty, string id)
+        => info.ValueKind == JsonValueKind.Object && info.TryGetProperty(choices, out var entries)
+            ? entries.EnumerateArray().Where(entry => ReadString(entry, idProperty) == id)
+                .Select(entry => ReadString(entry, "name")).FirstOrDefault() ?? "" : "";
+
 }

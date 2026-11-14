@@ -57,6 +57,7 @@ public partial class LineupEditorViewModel : ObservableObject
 
     public string LineupId { get; }
     public string? SourceUrl { get; }
+    public LineupGuide? Guide { get; }
 
     [ObservableProperty]
     private string _name = "新阵容";
@@ -87,6 +88,7 @@ public partial class LineupEditorViewModel : ObservableObject
 
         LineupId = source?.Id ?? Guid.NewGuid().ToString("N");
         SourceUrl = source?.SourceUrl;
+        Guide = source?.Guide?.Clone();
         if (!string.IsNullOrWhiteSpace(source?.Name))
             _name = source!.Name;
 
@@ -119,6 +121,34 @@ public partial class LineupEditorViewModel : ObservableObject
         _initialSlots = _phaseSlots.ToDictionary(pair => pair.Key, pair => pair.Value.Select(CloneSlot).ToList());
         _initialPhase = source is null ? LineupPhase.前期 : LineupPhase.后期;
         SelectPhase(_initialPhase);
+    }
+
+    /// <summary>Explicitly replace one draft phase; keep the source guide intact and never guess equipment owners.</summary>
+    public string ApplyGuideTab(int tabIndex, LineupPhase phase)
+    {
+        if (Guide is null || tabIndex < 0 || tabIndex >= Guide.Tabs.Count || !_phaseSlots.ContainsKey(phase))
+            return "没有可用的攻略阵容";
+        var tab = Guide.Tabs[tabIndex];
+        if (tab.HasInvalidEntries) return "攻略页包含无效条目，请重新核对来源；草稿未修改";
+        if (tab.Operators.Count == 0) return "此攻略页没有推荐干员";
+        var imported = new List<LineupSlot>();
+        foreach (var entry in tab.Operators)
+        {
+            var op = AllOperators.FirstOrDefault(op => op.Name == entry.OperatorName);
+            if (op is null) return $"本地尚未收录“{entry.OperatorName}”，请更新数据；草稿未修改";
+            if (!CanSelectOperator(op)) return $"“{entry.OperatorName}”需要匹配策略，请先在编辑器选择；草稿未修改";
+            if (!op.IsCustom && entry.ShopLevel > 0 && op.Tier != entry.ShopLevel)
+                return $"“{entry.OperatorName}”与本地等阶不同；草稿未修改";
+            if (entry.MergeLevel is not (0 or 1)) return $"“{entry.OperatorName}”的精锐等级暂不支持；草稿未修改";
+            imported.Add(new LineupSlot { OperatorName = op.Name, IsElite = entry.MergeLevel == 1 });
+        }
+        if (imported.Select(slot => slot.OperatorName).Distinct(StringComparer.Ordinal).Count() != imported.Count)
+            return "攻略阵容包含重复干员；草稿未修改";
+        while (imported.Count < MaxSlots) imported.Add(new LineupSlot());
+        _phaseSlots[phase] = new ObservableCollection<LineupSlot>(imported);
+        SyncMechSlots();
+        SelectPhase(phase);
+        return "";
     }
 
     private static bool IsMech(LineupSlot slot) => slot.OperatorName == LineupEquipmentService.MechName;
@@ -366,6 +396,7 @@ public partial class LineupEditorViewModel : ObservableObject
     {
         Id = LineupId,
         SourceUrl = SourceUrl,
+        Guide = Guide?.Clone(),
         Name = string.IsNullOrWhiteSpace(Name) ? "未命名阵容" : Name.Trim(),
         Slots = ExportPhase(LineupPhase.后期),
         EarlySlots = ExportPhase(LineupPhase.前期),

@@ -1,0 +1,792 @@
+{
+  "_fixtureNote": "Public guide structure and catalog IDs; title and all author prose are synthetic. No account metadata or remote image URLs.",
+  "code": 0,
+  "message": "OK",
+  "data": {
+    "guide": {
+      "invalid": 0,
+      "guide": {
+        "guideId": "2121069219205484656",
+        "seasonId": "act3autochess",
+        "versionId": "V3_1",
+        "strategyIds": [
+          "band_damaztic"
+        ],
+        "tabs": [
+          {
+            "tabType": 1,
+            "startRound": 0,
+            "endRound": 0,
+            "recChars": [
+              {
+                "charId": "char_332_archet",
+                "skillId": "skchr_archet_3",
+                "moduleId": "uniequip_002_archet",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_4027_heyak",
+                "skillId": "skchr_heyak_1",
+                "moduleId": "uniequip_002_heyak",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_180_amgoat",
+                "skillId": "skchr_amgoat_2",
+                "moduleId": "uniequip_002_amgoat",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_4046_ebnhlz",
+                "skillId": "skchr_ebnhlz_3",
+                "moduleId": "uniequip_004_ebnhlz",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_1016_agoat2",
+                "skillId": "skchr_agoat2_2",
+                "moduleId": "uniequip_002_agoat2",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_4098_vvana",
+                "skillId": "skchr_vvana_3",
+                "moduleId": "uniequip_002_vvana",
+                "mergeLevel": 1
+              },
+              {
+                "charId": "char_4202_haruka",
+                "skillId": "skchr_haruka_2",
+                "moduleId": "uniequip_002_haruka",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4133_logos",
+                "skillId": "skchr_logos_3",
+                "moduleId": "uniequip_003_logos",
+                "mergeLevel": 0
+              }
+            ],
+            "recItems": [
+              {
+                "itemId": "chess_item_1_03_e_a"
+              },
+              {
+                "itemId": "chess_item_2_05_e_a"
+              },
+              {
+                "itemId": "chess_item_2_09_e_a"
+              },
+              {
+                "itemId": "chess_item_4_01_e_a"
+              },
+              {
+                "itemId": "chess_item_4_09_e_a"
+              },
+              {
+                "itemId": "chess_item_6_03_e_a"
+              },
+              {
+                "itemId": "chess_item_6_02_e_a"
+              }
+            ],
+            "operationIdea": "示例第 1 页运营思路。\n保留换行、阶段阵容与装备，不按文字猜测佩戴者。",
+            "activeBonds": {
+              "seasonBondIds": [
+                "lethaniaShip"
+              ],
+              "regularBondIds": [
+                "arcaneShip",
+                "docShip",
+                "preciShip",
+                "suntShip",
+                "visiShip"
+              ]
+            }
+          },
+          {
+            "tabType": 2,
+            "startRound": 1,
+            "endRound": 4,
+            "recChars": [
+              {
+                "charId": "char_183_skgoat",
+                "skillId": "skcom_atk_up[2]",
+                "moduleId": "uniequip_002_skgoat",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4031_liesel",
+                "skillId": "skchr_liesel_1",
+                "moduleId": "uniequip_002_liesel",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_499_kaitou",
+                "skillId": "skchr_kaitou_1",
+                "moduleId": "uniequip_002_kaitou",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_328_cammou",
+                "skillId": "skcom_atk_up[2]",
+                "moduleId": "uniequip_002_cammou",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_1027_greyy2",
+                "skillId": "skchr_greyy2_2",
+                "moduleId": "uniequip_002_greyy2",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4198_christ",
+                "skillId": "skchr_christ_1",
+                "moduleId": "uniequip_002_christ",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4147_mitm",
+                "skillId": "skchr_mitm_1",
+                "moduleId": "uniequip_002_mitm",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_332_archet",
+                "skillId": "skchr_archet_3",
+                "moduleId": "uniequip_002_archet",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4047_pianst",
+                "skillId": "skchr_pianst_2",
+                "moduleId": "uniequip_002_pianst",
+                "mergeLevel": 0
+              }
+            ],
+            "recItems": [
+              {
+                "itemId": "chess_item_1_03_e_a"
+              },
+              {
+                "itemId": "chess_item_2_05_e_a"
+              },
+              {
+                "itemId": "chess_item_2_07_e_a"
+              },
+              {
+                "itemId": "chess_item_2_09_e_a"
+              }
+            ],
+            "operationIdea": "示例第 2 页运营思路。\n保留换行、阶段阵容与装备，不按文字猜测佩戴者。",
+            "activeBonds": {
+              "seasonBondIds": [
+                "lethaniaShip"
+              ],
+              "regularBondIds": [
+                "arcaneShip",
+                "preciShip",
+                "soloShip",
+                "visiShip"
+              ]
+            }
+          },
+          {
+            "tabType": 2,
+            "startRound": 5,
+            "endRound": 7,
+            "recChars": [
+              {
+                "charId": "char_183_skgoat",
+                "skillId": "skcom_atk_up[2]",
+                "moduleId": "uniequip_002_skgoat",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_499_kaitou",
+                "skillId": "skchr_kaitou_1",
+                "moduleId": "uniequip_002_kaitou",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_328_cammou",
+                "skillId": "skcom_atk_up[2]",
+                "moduleId": "uniequip_002_cammou",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4147_mitm",
+                "skillId": "skchr_mitm_1",
+                "moduleId": "uniequip_002_mitm",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_332_archet",
+                "skillId": "skchr_archet_3",
+                "moduleId": "uniequip_002_archet",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4047_pianst",
+                "skillId": "skchr_pianst_2",
+                "moduleId": "uniequip_002_pianst",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4046_ebnhlz",
+                "skillId": "skchr_ebnhlz_3",
+                "moduleId": "uniequip_004_ebnhlz",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4027_heyak",
+                "skillId": "skchr_heyak_1",
+                "moduleId": "uniequip_002_heyak",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_180_amgoat",
+                "skillId": "skchr_amgoat_2",
+                "moduleId": "uniequip_002_amgoat",
+                "mergeLevel": 0
+              }
+            ],
+            "recItems": [
+              {
+                "itemId": "chess_item_1_03_e_a"
+              },
+              {
+                "itemId": "chess_item_2_05_e_a"
+              },
+              {
+                "itemId": "chess_item_2_07_e_a"
+              },
+              {
+                "itemId": "chess_item_2_09_e_a"
+              }
+            ],
+            "operationIdea": "示例第 3 页运营思路。\n保留换行、阶段阵容与装备，不按文字猜测佩戴者。",
+            "activeBonds": {
+              "seasonBondIds": [
+                "lethaniaShip"
+              ],
+              "regularBondIds": [
+                "arcaneShip",
+                "preciShip",
+                "soloShip",
+                "visiShip"
+              ]
+            }
+          },
+          {
+            "tabType": 2,
+            "startRound": 8,
+            "endRound": 11,
+            "recChars": [
+              {
+                "charId": "char_332_archet",
+                "skillId": "skchr_archet_3",
+                "moduleId": "uniequip_002_archet",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4047_pianst",
+                "skillId": "skchr_pianst_2",
+                "moduleId": "uniequip_002_pianst",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4046_ebnhlz",
+                "skillId": "skchr_ebnhlz_3",
+                "moduleId": "uniequip_004_ebnhlz",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4027_heyak",
+                "skillId": "skchr_heyak_1",
+                "moduleId": "uniequip_002_heyak",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_180_amgoat",
+                "skillId": "skchr_amgoat_2",
+                "moduleId": "uniequip_002_amgoat",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_1016_agoat2",
+                "skillId": "skchr_agoat2_2",
+                "moduleId": "uniequip_002_agoat2",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4098_vvana",
+                "skillId": "skchr_vvana_3",
+                "moduleId": "uniequip_002_vvana",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_171_bldsk",
+                "skillId": "skchr_bldsk_1",
+                "moduleId": "uniequip_002_bldsk",
+                "mergeLevel": 0
+              }
+            ],
+            "recItems": [
+              {
+                "itemId": "chess_item_1_03_e_a"
+              },
+              {
+                "itemId": "chess_item_2_05_e_a"
+              },
+              {
+                "itemId": "chess_item_2_07_e_a"
+              },
+              {
+                "itemId": "chess_item_2_09_e_a"
+              }
+            ],
+            "operationIdea": "示例第 4 页运营思路。\n保留换行、阶段阵容与装备，不按文字猜测佩戴者。",
+            "activeBonds": {
+              "seasonBondIds": [
+                "lethaniaShip"
+              ],
+              "regularBondIds": [
+                "arcaneShip",
+                "docShip",
+                "preciShip",
+                "visiShip"
+              ]
+            }
+          },
+          {
+            "tabType": 2,
+            "startRound": 12,
+            "endRound": 13,
+            "recChars": [
+              {
+                "charId": "char_332_archet",
+                "skillId": "skchr_archet_3",
+                "moduleId": "uniequip_002_archet",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4046_ebnhlz",
+                "skillId": "skchr_ebnhlz_3",
+                "moduleId": "uniequip_004_ebnhlz",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4027_heyak",
+                "skillId": "skchr_heyak_1",
+                "moduleId": "uniequip_002_heyak",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_180_amgoat",
+                "skillId": "skchr_amgoat_2",
+                "moduleId": "uniequip_002_amgoat",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_1016_agoat2",
+                "skillId": "skchr_agoat2_2",
+                "moduleId": "uniequip_002_agoat2",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4098_vvana",
+                "skillId": "skchr_vvana_3",
+                "moduleId": "uniequip_002_vvana",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4202_haruka",
+                "skillId": "skchr_haruka_2",
+                "moduleId": "uniequip_002_haruka",
+                "mergeLevel": 0
+              },
+              {
+                "charId": "char_4133_logos",
+                "skillId": "skchr_logos_3",
+                "moduleId": "uniequip_003_logos",
+                "mergeLevel": 0
+              }
+            ],
+            "recItems": [
+              {
+                "itemId": "chess_item_1_03_e_a"
+              },
+              {
+                "itemId": "chess_item_2_05_e_a"
+              },
+              {
+                "itemId": "chess_item_2_07_e_a"
+              },
+              {
+                "itemId": "chess_item_2_09_e_a"
+              }
+            ],
+            "operationIdea": "示例第 5 页运营思路。\n保留换行、阶段阵容与装备，不按文字猜测佩戴者。",
+            "activeBonds": {
+              "seasonBondIds": [
+                "lethaniaShip"
+              ],
+              "regularBondIds": [
+                "arcaneShip",
+                "docShip",
+                "preciShip",
+                "visiShip"
+              ]
+            }
+          }
+        ],
+        "title": "奥术精准莱塔尼亚分回合示例"
+      }
+    },
+    "seasonResourceMap": {
+      "act3autochess": {
+        "versionResourceMap": {
+          "V3_1": {
+            "chars": {
+              "char_332_archet": {
+                "name": "空弦",
+                "shopLevel": 3,
+                "skills": [
+                  {
+                    "skillId": "skchr_archet_3",
+                    "name": "箭矢·暴风"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_archet",
+                    "name": "“明天的种子”"
+                  }
+                ]
+              },
+              "char_4027_heyak": {
+                "name": "霍尔海雅",
+                "shopLevel": 4,
+                "skills": [
+                  {
+                    "skillId": "skchr_heyak_1",
+                    "name": "但为求索"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_heyak",
+                    "name": "“图书馆”"
+                  }
+                ]
+              },
+              "char_180_amgoat": {
+                "name": "艾雅法拉",
+                "shopLevel": 4,
+                "skills": [
+                  {
+                    "skillId": "skchr_amgoat_2",
+                    "name": "点燃"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_amgoat",
+                    "name": "“错过的声音”"
+                  }
+                ]
+              },
+              "char_4046_ebnhlz": {
+                "name": "黑键",
+                "shopLevel": 4,
+                "skills": [
+                  {
+                    "skillId": "skchr_ebnhlz_3",
+                    "name": "寂静之声"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_004_ebnhlz",
+                    "name": "朽坏传承"
+                  }
+                ]
+              },
+              "char_1016_agoat2": {
+                "name": "纯烬艾雅法拉",
+                "shopLevel": 5,
+                "skills": [
+                  {
+                    "skillId": "skchr_agoat2_2",
+                    "name": "云霭荫佑"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_agoat2",
+                    "name": "想要留住的声音"
+                  }
+                ]
+              },
+              "char_4098_vvana": {
+                "name": "薇薇安娜",
+                "shopLevel": 5,
+                "skills": [
+                  {
+                    "skillId": "skchr_vvana_3",
+                    "name": "“明灭”"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_vvana",
+                    "name": "目不能及之处"
+                  }
+                ]
+              },
+              "char_4202_haruka": {
+                "name": "遥",
+                "shopLevel": 6,
+                "skills": [
+                  {
+                    "skillId": "skchr_haruka_2",
+                    "name": "幽隙栖萤"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_haruka",
+                    "name": "迟来的纪念"
+                  }
+                ]
+              },
+              "char_4133_logos": {
+                "name": "逻各斯",
+                "shopLevel": 6,
+                "skills": [
+                  {
+                    "skillId": "skchr_logos_3",
+                    "name": "延异视阈"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_003_logos",
+                    "name": "《语义范式百科》"
+                  }
+                ]
+              },
+              "char_183_skgoat": {
+                "name": "地灵",
+                "shopLevel": 1,
+                "skills": [
+                  {
+                    "skillId": "skcom_atk_up[2]",
+                    "name": "攻击力强化·β型"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_skgoat",
+                    "name": "待确认的申请表"
+                  }
+                ]
+              },
+              "char_4031_liesel": {
+                "name": "复奏",
+                "shopLevel": 2,
+                "skills": [
+                  {
+                    "skillId": "skchr_liesel_1",
+                    "name": "合奏起拍"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_liesel",
+                    "name": "“暮约”"
+                  }
+                ]
+              },
+              "char_499_kaitou": {
+                "name": "折光",
+                "shopLevel": 2,
+                "skills": [
+                  {
+                    "skillId": "skchr_kaitou_1",
+                    "name": "镭射穿凿"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_kaitou",
+                    "name": "凡石"
+                  }
+                ]
+              },
+              "char_328_cammou": {
+                "name": "卡达",
+                "shopLevel": 1,
+                "skills": [
+                  {
+                    "skillId": "skcom_atk_up[2]",
+                    "name": "攻击力强化·β型"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_cammou",
+                    "name": "大菲林脱敏实验"
+                  }
+                ]
+              },
+              "char_1027_greyy2": {
+                "name": "承曦格雷伊",
+                "shopLevel": 2,
+                "skills": [
+                  {
+                    "skillId": "skchr_greyy2_2",
+                    "name": "晨曦信标"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_greyy2",
+                    "name": "新型电控设备技术原型"
+                  }
+                ]
+              },
+              "char_4198_christ": {
+                "name": "Miss.Christine",
+                "shopLevel": 2,
+                "skills": [
+                  {
+                    "skillId": "skchr_christ_1",
+                    "name": "自由用餐礼仪"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_christ",
+                    "name": "“黑色”贩卖机"
+                  }
+                ]
+              },
+              "char_4147_mitm": {
+                "name": "渡桥",
+                "shopLevel": 2,
+                "skills": [
+                  {
+                    "skillId": "skchr_mitm_1",
+                    "name": "遥控解体"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_mitm",
+                    "name": "内敛锋芒"
+                  }
+                ]
+              },
+              "char_4047_pianst": {
+                "name": "车尔尼",
+                "shopLevel": 3,
+                "skills": [
+                  {
+                    "skillId": "skchr_pianst_2",
+                    "name": "曲惊四座"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_pianst",
+                    "name": "“日复一日”"
+                  }
+                ]
+              },
+              "char_171_bldsk": {
+                "name": "华法琳",
+                "shopLevel": 4,
+                "skills": [
+                  {
+                    "skillId": "skchr_bldsk_1",
+                    "name": "紧急包扎"
+                  }
+                ],
+                "modules": [
+                  {
+                    "moduleId": "uniequip_002_bldsk",
+                    "name": "应急储备"
+                  }
+                ]
+              }
+            },
+            "items": {
+              "chess_item_1_03_e_a": {
+                "name": "盟约之币",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_2_05_e_a": {
+                "name": "精打细算玩偶",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_2_09_e_a": {
+                "name": "聚合急救箱",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_4_01_e_a": {
+                "name": "寻呼模块",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_4_09_e_a": {
+                "name": "莱塔尼亚小鼓",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_6_03_e_a": {
+                "name": "变形同构体",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_6_02_e_a": {
+                "name": "人事部文档",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              },
+              "chess_item_2_07_e_a": {
+                "name": "见钱眼开玩偶",
+                "effectDesc": "示例装备说明，仅作未分配推荐。"
+              }
+            },
+            "bonds": {
+              "lethaniaShip": {
+                "name": "莱塔尼亚"
+              },
+              "arcaneShip": {
+                "name": "奥术"
+              },
+              "docShip": {
+                "name": "聚合"
+              },
+              "preciShip": {
+                "name": "精准"
+              },
+              "suntShip": {
+                "name": "绝技"
+              },
+              "visiShip": {
+                "name": "远见"
+              },
+              "soloShip": {
+                "name": "独行"
+              }
+            },
+            "strategies": {
+              "band_damaztic": {
+                "name": "变形同构"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

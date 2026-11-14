@@ -1,5 +1,8 @@
 // Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
+using System.Net;
 using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using HongxueAssistant.Core.Services;
 using FluentAssertions;
 
@@ -9,6 +12,7 @@ namespace HongxueAssistant.Tests.Services;
 /// 自动更新的纯逻辑：更新源覆盖、版本比较、SHA256 校验、更新脚本生成。
 /// 这些用例不访问网络，端到端流程另用本机假 feed 手工验证。
 /// </summary>
+[Collection("Update environment")]
 public class UpdateServiceTests
 {
     [Fact]
@@ -27,6 +31,10 @@ public class UpdateServiceTests
     [InlineData("V1.1.2", "1.1.2")]
     [InlineData("1.1.2", "1.1.2")]
     [InlineData("v1.1", "1.1")]
+    [InlineData("v1.8.0-alpha1", "1.8.0.1")]
+    [InlineData("v1.8.0-alpha2", "1.8.0.2")]
+    [InlineData("v1.8.0-alpha10+abcdef", "1.8.0.10")]
+    [InlineData("1.8.1-alpha1+build.20261114", "1.8.1.1")]
     [InlineData("v1.8.0-local.1", "1.8.0.1")]
     [InlineData("v1.8.0-local.2+abcdef", "1.8.0.2")]
     public void TryParseVersion_AcceptsReleaseTags(string tag, string expected)
@@ -38,9 +46,101 @@ public class UpdateServiceTests
     [InlineData("")]
     [InlineData("release")]
     [InlineData("v")]
+    [InlineData("v1.8.0-alpha")]
+    [InlineData("v1.8.0-alpha.1")]
+    [InlineData("v1.8.0-alpha-1")]
+    [InlineData("v1.8.0-alpha2147483648")]
+    [InlineData("v1.8.0-beta1")]
+    [InlineData("v1.8.0-rc1")]
+    [InlineData("v1.8-alpha1")]
     public void TryParseVersion_RejectsGarbage(string tag)
     {
         UpdateService.TryParseVersion(tag).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("v1.8.0-alpha2", "v1.8.0-alpha1")]
+    [InlineData("v1.8.0-alpha10+abcdef", "v1.8.0-alpha2")]
+    [InlineData("v1.8.1-alpha1", "v1.8.0-alpha99")]
+    [InlineData("v1.9.0-alpha1", "v1.8.99-alpha99")]
+    public void TryParseVersion_AlphaNumbersAndUpstreamBaseCompareNumerically(string newer, string older)
+    {
+        UpdateService.TryParseVersion(newer)!.CompareTo(UpdateService.TryParseVersion(older)).Should().BePositive();
+    }
+
+    [Fact]
+    public void TryParseVersion_IgnoresBuildMetadataAndPreservesLegacyLocalRevisionCompatibility()
+    {
+        UpdateService.TryParseVersion("v1.8.0-alpha2+build.abc")
+            .Should().Be(UpdateService.TryParseVersion("v1.8.0-alpha2"));
+        UpdateService.TryParseVersion("v1.8.0-alpha2")
+            .Should().Be(UpdateService.TryParseVersion("v1.8.0-local.2"));
+    }
+
+    [Theory]
+    [InlineData("../evil-win-x64.zip")]
+    [InlineData("..\\evil-win-x64.zip")]
+    [InlineData("C:\\evil-win-x64.zip")]
+    [InlineData("/evil-win-x64.zip")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(null)]
+    [InlineData("evil:stream-win-x64.zip")]
+    [InlineData(" evil-win-x64.zip")]
+    [InlineData("CON.-win-x64.zip")]
+    public async Task UnsafePackageNamesAreRejectedBeforeNetworkOrTempWrites(string? assetName)
+    {
+        var requests = 0;
+        using var handler = new AssetNameHandler(_ =>
+        {
+            Interlocked.Increment(ref requests);
+            throw new InvalidOperationException("Invalid asset name must never reach the network");
+        });
+        using var http = new HttpClient(handler);
+        var service = new UpdateService(http);
+        var before = Directory.GetDirectories(Path.GetTempPath(), "HongxueAssistant-Update-*");
+        var info = new UpdateInfo("v99.0.0", "99.0.0", "", "https://github.com/friends-xiaohuli/HongxueAssistant/releases/download/v99.0.0/package-win-x64.zip", assetName!, null);
+        Func<Task> download = () => service.DownloadAndApplyUpdateAsync(info);
+        await download.Should().ThrowAsync<UpdateIntegrityException>().WithMessage("*文件名无效*");
+        requests.Should().Be(0);
+        Directory.GetDirectories(Path.GetTempPath(), "HongxueAssistant-Update-*").Should().BeEquivalentTo(before);
+        service.PendingScriptPath.Should().BeNull();
+        service.LastError.Should().Contain("文件名无效");
+    }
+
+    [Theory]
+    [InlineData("../evil-win-x64.zip")]
+    [InlineData("..\\evil-win-x64.zip")]
+    [InlineData("C:\\evil-win-x64.zip")]
+    [InlineData("/evil-win-x64.zip")]
+    public async Task ReleaseWithUnsafePackageNameNeverProducesDownloadCandidate(string assetName)
+    {
+        var previous = Environment.GetEnvironmentVariable(UpdateService.FeedOverrideVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(UpdateService.FeedOverrideVariable, null);
+            var requests = 0;
+            using var handler = new AssetNameHandler(request =>
+            {
+                Interlocked.Increment(ref requests);
+                request.RequestUri!.AbsoluteUri.Should().Be(UpdateService.DefaultFeedUrl);
+                var json = JsonSerializer.Serialize(new
+                {
+                    tag_name = "v99.0.0", body = "",
+                    assets = new[] { new { name = assetName, browser_download_url = "https://github.com/friends-xiaohuli/HongxueAssistant/releases/download/v99.0.0/package-win-x64.zip" } }
+                });
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+            });
+            using var http = new HttpClient(handler);
+            var service = new UpdateService(http);
+            var before = Directory.GetDirectories(Path.GetTempPath(), "HongxueAssistant-Update-*");
+            (await service.CheckForUpdateAsync()).Should().BeNull();
+            service.LastError.Should().Contain("文件名无效");
+            requests.Should().Be(1, "only the release metadata may be requested");
+            Directory.GetDirectories(Path.GetTempPath(), "HongxueAssistant-Update-*").Should().BeEquivalentTo(before);
+            service.PendingScriptPath.Should().BeNull();
+        }
+        finally { Environment.SetEnvironmentVariable(UpdateService.FeedOverrideVariable, previous); }
     }
 
     [Fact]
@@ -171,4 +271,10 @@ public class UpdateServiceTests
 
         script.Should().Contain("'C:\\o''neil\\app'");
     }
+    private sealed class AssetNameHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(respond(request));
+    }
+
 }

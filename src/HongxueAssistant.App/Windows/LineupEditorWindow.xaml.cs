@@ -32,8 +32,11 @@ public partial class LineupEditorWindow : Window
         {
             SourcePanel.Visibility = Visibility.Visible;
             SourceUrlBox.Text = vm.SourceUrl;
-            ImportNoticeText.Text = "来自官方攻略；推荐装备与回合讲解请查看原文。";
+            ImportNoticeText.Text = vm.Guide is { Tabs.Count: > 0 }
+                ? "攻略的回合阵容、推荐装备、运营思路及技能模组已保留，可打开攻略流程查看。"
+                : "来自官方攻略；旧阵容未保留完整流程，可重新导入来源链接。";
         }
+        GuideFlowButton.Visibility = vm.Guide is { Tabs.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
         foreach (var phase in Enum.GetValues<LineupPhase>())
         {
             var button = new Button { Style = (Style)FindResource("PhaseSegment"), DataContext = phase };
@@ -56,6 +59,21 @@ public partial class LineupEditorWindow : Window
     }
 
     public void ShowImportNotice(string notice) => ImportNoticeText.Text = notice;
+
+    private void OnGuideFlowClick(object sender, RoutedEventArgs e)
+    {
+        if (_vm.Guide is null) return;
+        new LineupGuideWindow(_vm.Guide, (index, phase) =>
+        {
+            var error = _vm.ApplyGuideTab(index, phase);
+            if (error.Length == 0)
+            {
+                _editingStrategies = false;
+                RefreshEditor();
+            }
+            return error;
+        }) { Owner = this }.ShowDialog();
+    }
 
     private void RefreshEditor()
     {

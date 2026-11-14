@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -37,11 +38,30 @@ public partial class UpdateService
     private const string ChecksumsAssetName = "SHA256SUMS.txt";
     private const string AppExecutableName = "HongxueAssistant.exe";
 
-    private static readonly HttpClient _http = new()
+    private static readonly HttpClient DefaultHttp = new()
     {
         Timeout = TimeSpan.FromSeconds(30),
         DefaultRequestHeaders = { { "User-Agent", "HongxueAssistant-Updater/1.0" } }
     };
+
+    private readonly HttpClient _http;
+    private readonly GitHubUpdateTransport _transport;
+
+    public UpdateService() : this(null) { }
+
+    public UpdateService(HttpClient? http, IReadOnlyList<GitHubUpdateRoute>? routes = null)
+    {
+        _http = http ?? DefaultHttp;
+        _transport = new GitHubUpdateTransport(_http, routes);
+    }
+
+    public string? LastNotice { get; private set; }
+    public string? LastApiRouteName => _transport.LastApiRouteName;
+    public string? LastDownloadRouteName => _transport.LastDownloadRouteName;
+
+    public Task<IReadOnlyList<UpdateRouteProbeResult>> ProbeRoutesAsync(
+        IProgress<UpdateRouteProbeResult>? progress = null, CancellationToken ct = default)
+        => _transport.ProbeAsync(DefaultFeedUrl, progress: progress, ct: ct);
 
     public Version CurrentVersion =>
         TryParseVersion(Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "")
@@ -73,9 +93,16 @@ public partial class UpdateService
         if (IsDevBuild) return null;
 
         LastError = null;
+        LastNotice = null;
         try
         {
-            var release = await _http.GetFromJsonAsync<GitHubRelease>(FeedUrl, ct);
+            var fetched = await _transport.ReadReleaseAsync(FeedUrl, ct);
+            if (fetched.NoRelease)
+            {
+                LastNotice = "仓库暂无发布版本，当前无需更新";
+                return null;
+            }
+            var release = JsonSerializer.Deserialize<GitHubRelease>(fetched.Json!);
             if (release is null || string.IsNullOrEmpty(release.TagName))
             {
                 LastError = "更新源返回的数据不完整";
@@ -98,8 +125,20 @@ public partial class UpdateService
                 return null;
             }
 
+            if (!IsValidPackageAssetName(asset.Name))
+            {
+                LastError = "安装包文件名无效，已停止更新";
+                return null;
+            }
+
             var checksums = release.Assets.FirstOrDefault(a =>
                 string.Equals(a.Name, ChecksumsAssetName, StringComparison.OrdinalIgnoreCase));
+            if (FeedUrl == DefaultFeedUrl && (!GitHubUpdateTransport.IsRepositoryAssetUrl(asset.DownloadUrl)
+                || (checksums is not null && !GitHubUpdateTransport.IsRepositoryAssetUrl(checksums.DownloadUrl))))
+            {
+                LastError = "发布文件不属于本仓库的 GitHub Releases，已停止更新";
+                return null;
+            }
 
             return new UpdateInfo(
                 release.TagName,
@@ -109,7 +148,11 @@ public partial class UpdateService
                 asset.Name,
                 checksums?.DownloadUrl);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidDataException)
         {
             LastError = DescribeError(ex);
             return null;
@@ -128,6 +171,10 @@ public partial class UpdateService
     {
         LastError = null;
 
+        // Reject untrusted asset names before touching the filesystem or sending a download request.
+        if (!IsValidPackageAssetName(info.AssetName))
+            throw IntegrityFailure("安装包文件名无效，已停止更新");
+
         // 每次尝试用独立目录：上一次的 update.ps1 可能仍被 PowerShell 占用，
         // 复用固定目录会让 Directory.Delete 抛 IOException 而整条下载失败。
         CleanupStaleUpdateDirs();
@@ -135,26 +182,7 @@ public partial class UpdateService
 
         var zipPath = Path.Combine(tempDir, info.AssetName);
 
-        // Download with progress reporting
-        using (var response = await _http.GetAsync(
-                   info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct))
-        {
-            response.EnsureSuccessStatusCode();
-
-            var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-            await using var httpStream = await response.Content.ReadAsStreamAsync(ct);
-            await using var fileStream = File.Create(zipPath);
-            var buffer = new byte[65536];
-            long downloaded = 0;
-            int bytesRead;
-            while ((bytesRead = await httpStream.ReadAsync(buffer, ct)) > 0)
-            {
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
-                downloaded += bytesRead;
-                if (totalBytes > 0)
-                    progress?.Report((double)downloaded / totalBytes * 0.85);
-            }
-        }
+        await _transport.DownloadPackageAsync(info.DownloadUrl, zipPath, progress, ct);
 
         progress?.Report(0.87);
 
@@ -162,7 +190,7 @@ public partial class UpdateService
         var actualHash = await ComputeSha256Async(zipPath, ct);
         if (string.IsNullOrWhiteSpace(info.ChecksumsUrl))
             throw IntegrityFailure($"发布 {info.TagName} 缺少 {ChecksumsAssetName}，已停止更新");
-        var checksumsText = await _http.GetStringAsync(info.ChecksumsUrl, ct);
+        var checksumsText = await _transport.ReadChecksumsAsync(info.ChecksumsUrl, ct, info.AssetName);
         var expectedHash = ParseChecksum(checksumsText, info.AssetName)
             ?? throw IntegrityFailure($"校验文件中没有 {info.AssetName} 的记录，已停止更新");
         if (!ChecksumMatches(expectedHash, actualHash))
@@ -253,6 +281,14 @@ public partial class UpdateService
         }
     }
 
+    private static bool IsValidPackageAssetName(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && name == name.Trim() && name.Length <= 255
+        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+        && !name.Contains('/') && !name.Contains('\\') && !Path.IsPathRooted(name)
+        && name == Path.GetFileName(name)
+        && name.EndsWith(PackageSuffix, StringComparison.OrdinalIgnoreCase)
+        && !Regex.IsMatch(name.Split('.')[0].TrimEnd(' '), @"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", RegexOptions.IgnoreCase);
+
     private UpdateIntegrityException IntegrityFailure(string message)
     {
         LastError = message;
@@ -263,6 +299,8 @@ public partial class UpdateService
     public static string DescribeError(Exception ex) => ex switch
     {
         UpdateIntegrityException => ex.Message,
+        UpdateRouteException => ex.Message,
+        InvalidDataException => ex.Message,
         TaskCanceledException => "连接更新源超时",
         HttpRequestException http when (int?)http.StatusCode == 403
             => "更新源拒绝了请求（可能是 GitHub 限流）",
@@ -278,7 +316,9 @@ public partial class UpdateService
     public static Version? TryParseVersion(string tag)
     {
         var text = (tag ?? "").Trim().TrimStart('v', 'V').Split('+')[0];
-        var local = Regex.Match(text, @"^(?<core>\d+\.\d+\.\d+)-local\.(?<revision>\d+)$");
+        // Local alpha builds keep the upstream core version; compare the alpha number numerically.
+        // Preserve the previous local.N tags so existing installations can still read their releases.
+        var local = Regex.Match(text, @"^(?<core>\d+\.\d+\.\d+)-(?:alpha|local\.)(?<revision>\d+)$");
         if (local.Success && Version.TryParse(local.Groups["core"].Value, out var core)
             && int.TryParse(local.Groups["revision"].Value, out var revision))
             return new Version(core.Major, core.Minor, core.Build, revision);

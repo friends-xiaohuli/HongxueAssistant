@@ -1,6 +1,8 @@
 // Modified for ASP Assistant Regulation on 2026-11-11; see NOTICE.
 using System.IO;
+using System.Collections.ObjectModel;
 using System.Net.Http;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -43,6 +45,8 @@ public partial class SidePanelWindow : Window
 
     private readonly UpdateService _updateService = new();
     private bool _isCheckingForUpdates;
+    private CancellationTokenSource? _updateRouteProbeCancellation;
+    private readonly ObservableCollection<UpdateRouteProbeResult> _updateRouteProbeResults = [];
     private bool _hasCheckedForUpdates;
     private readonly SettingsManager _settingsManager;
     private SidePanelPositionSettings _positionSettings;
@@ -121,7 +125,10 @@ public partial class SidePanelWindow : Window
             Width = _preferredWidthDip;
             _userHeightDip = placement.HeightDip;
         }
-        CurrentVersionText.Text = $"当前版本  v{typeof(SidePanelWindow).Assembly.GetName().Version!.ToString(3)}";
+        var applicationAssembly = typeof(SidePanelWindow).Assembly;
+        var displayVersion = applicationAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion.Split('+')[0] ?? applicationAssembly.GetName().Version!.ToString(3);
+        CurrentVersionText.Text = $"当前版本  v{displayVersion}";
         GameThemeSelector.SelectedIndex = (int)gameTheme;
         FollowModeThemeToggle.IsChecked = _appearance.FollowModeTheme;
         UiThemeSelector.SelectedIndex = (int)_appearance.Theme;
@@ -349,6 +356,54 @@ public partial class SidePanelWindow : Window
         await CheckForUpdatesAsync(isManual: true);
     }
 
+    private async void OnTestUpdateRoutes(object sender, RoutedEventArgs e)
+    {
+        if (_updateRouteProbeCancellation is not null) return;
+        using var cancellation = new CancellationTokenSource();
+        _updateRouteProbeCancellation = cancellation;
+        TestUpdateRoutesButton.IsEnabled = false;
+        CancelUpdateRoutesButton.Visibility = Visibility.Visible;
+        UpdateRoutesResults.Visibility = Visibility.Visible;
+        _updateRouteProbeResults.Clear();
+        UpdateRoutesResults.ItemsSource = _updateRouteProbeResults;
+        UpdateRoutesStatus.Text = "正在测试实际版本接口和下载路径…";
+        var progress = new Progress<UpdateRouteProbeResult>(result =>
+        {
+            _updateRouteProbeResults.Add(result);
+            UpdateRoutesStatus.Text = $"已完成 {_updateRouteProbeResults.Count} 条线路";
+        });
+        try
+        {
+            var results = await _updateService.ProbeRoutesAsync(progress, cancellation.Token);
+            var api = results.Count(result => result.ApiState is UpdateRouteState.Available or UpdateRouteState.NoRelease);
+            var downloads = results.Count(result => result.DownloadState == UpdateRouteState.Available);
+            UpdateRoutesStatus.Text = $"{results.Count} 条测试完成：接口 {api} 条，下载 {downloads} 条可用";
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateRoutesStatus.Text = "测试已取消，保留已完成的结果";
+        }
+        catch (Exception ex)
+        {
+            UpdateRoutesStatus.Text = $"线路测试失败：{UpdateService.DescribeError(ex)}";
+        }
+        finally
+        {
+            _updateRouteProbeCancellation = null;
+            TestUpdateRoutesButton.IsEnabled = true;
+            CancelUpdateRoutesButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void OnCancelUpdateRoutes(object sender, RoutedEventArgs e)
+        => _updateRouteProbeCancellation?.Cancel();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _updateRouteProbeCancellation?.Cancel();
+        base.OnClosed(e);
+    }
+
     internal async Task CheckForUpdatesAsync(bool isManual)
     {
         if (_isCheckingForUpdates || (!isManual && _hasCheckedForUpdates)) return;
@@ -379,7 +434,7 @@ public partial class SidePanelWindow : Window
             if (info is null)
             {
                 UpdateStatusText.Text = _updateService.LastError is null
-                    ? "当前已是最新版本"
+                    ? _updateService.LastNotice ?? "当前已是最新版本"
                     : $"检查失败：{_updateService.LastError}，请稍后重试";
                 if (_updateService.LastError is not null)
                     AppLogger.Warn("Update", $"Update check failed: {_updateService.LastError}");

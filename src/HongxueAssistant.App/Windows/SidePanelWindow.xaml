@@ -396,6 +396,36 @@
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <Button x:Name="TestUpdateRoutesButton" DockPanel.Dock="Right" Content="测试更新线路"
+                                                    Click="OnTestUpdateRoutes" Style="{StaticResource SmallActionButton}" />
+                                            <Button x:Name="CancelUpdateRoutesButton" DockPanel.Dock="Right" Content="取消"
+                                                    Visibility="Collapsed" Click="OnCancelUpdateRoutes" Style="{StaticResource SmallActionButton}" Margin="0,0,6,0" />
+                                        </DockPanel>
+                                        <TextBlock Text="优先直连，失败后尝试代理。第三方线路仅转发公开资源；建议使用直连。"
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                        <TextBlock Text="版本接口与下载分别测试；仓库暂无发布时，下载仅测试公共 ZIP 样本，不会安装。每次最多 45 秒，可取消。"
+                                                   FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                        <TextBlock x:Name="UpdateRoutesStatus" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                                        <ItemsControl x:Name="UpdateRoutesResults" Visibility="Collapsed" Margin="0,6,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,7" ToolTip="{Binding TestedUrls}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Route.Name}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding ApiSummary}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Text="{Binding DownloadSummary}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Text="{Binding TimingSummary}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </ScrollViewer>
                     </DockPanel>

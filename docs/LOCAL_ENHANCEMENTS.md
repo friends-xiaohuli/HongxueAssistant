@@ -14,6 +14,8 @@
 - 释放拖动时 12 DIP 内吸附，调整大小不吸附，两种窗口模式可拖动。
 - 新版商店算法优先，ADB 无结果时使用校准 MuMu 兜底。
 - 保留新版规划、路线、自选、策略棋子、部署、托盘及追踪来源/已获取。
+- 森空岛完整攻略快照：全部回合、正文、推荐装备、技能／模组和盟约；编辑、分享不丢失，明确复制到草稿阶段。
+- GitHub 更新线路诊断：API 与下载独立测试、直连优先与代理回退、无发布状态识别和安装包 SHA256 校验。
 
 ## Git
 
@@ -33,9 +35,14 @@ main 为增强主线。旧 codex/sync-bing-1.7.1 与独立 bundle 备份保留�
 
 按功能解决冲突，先检查上游已有修复，不整块覆盖本地连接、规划及窗口补丁。不强推、不重写历史。
 
-## 构建
+## 构建与版本
 
-    dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.8.0-local.1 -o publish/win-x64
+日常修改仅编译和测试，不主动打包。需要交付包时再执行发布；基础版本跟随所用上游版本，本地更新编号从 alpha1 按数字递增为 alpha2、alpha3。
+例如基于 1.8.0 的首包名称为 HongxueAssistant-v1.8.0-alpha1-win-x64.zip，后续为 HongxueAssistant-v1.8.0-alpha2-win-x64.zip。
+对应源码 Version 和 Git 标签分别为 1.8.0-alpha1、v1.8.0-alpha1。只有明确推送发布标签才运行 Release 工作流，普通 main 推送只做验证。
+alphaN 是本仓库的增强修订编号，Release 工作流发布为普通 GitHub Release，使 /releases/latest 能发现；手动标记为预发布的版本不会进入该接口。
+
+    dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.8.0-alpha1 -o publish/HongxueAssistant-v1.8.0-alpha1-win-x64
 
 保留 data、runtimes、MaaAgentBinary、VC++ 运行库、LICENSE、LICENSE.upstream、NOTICE。
 .tools、publish、bin、obj 和用户设置不提交。更新检查使用本仓库 Releases，上游更新走 Git。
@@ -51,6 +58,6 @@ main 为增强主线。旧 codex/sync-bing-1.7.1 与独立 bundle 备份保留�
 
     ./tools/Verify-Package.ps1 -PackageDirectory publish/HongxueAssistant
 
-压缩包以 HongxueAssistant 开头并包含单独的 HongxueAssistant 文件夹。
-本地 Release 标签 v1.8.0-local.1、v1.8.0-local.2 按修订号比较；默认更新接口为本仓库 /releases/latest。
+压缩包按 HongxueAssistant-v上游版本-alpha编号-win-x64.zip 命名，顶层文件夹与压缩包同名。
+本地 Release 标签 v1.8.0-alpha1、v1.8.0-alpha2 按编号数值比较，alpha10 高于 alpha2；兼容旧 local.N 标签。默认更新接口为本仓库 /releases/latest。
 旧目录/环境变量/单实例名称仅在升级兼容代码中保留，未更改原库 URL 的来源归属说明。

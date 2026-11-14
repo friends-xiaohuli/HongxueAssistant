@@ -107,6 +107,44 @@ public class LineupShareServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData("text")]
+    [InlineData("skill")]
+    [InlineData("module")]
+    [InlineData("equipment")]
+    [InlineData("round")]
+    [InlineData("sourceData")]
+    public async Task ChangedGuideContentGetsANewShareLink(string change)
+    {
+        var lineup = new Lineup
+        {
+            Name = "完整攻略", Guide = new LineupGuide
+            {
+                GuideId = "123", Tabs = [new() { TabType = 2, StartRound = 1, EndRound = 4,
+                    OperationIdea = "保留原文", Operators = [new() { OperatorName = "角峰", SkillId = "skill-a", ModuleId = "module-a" }],
+                    Equipment = [new() { ItemId = "item-a", Name = "坚守盾牌" }] }]
+            }
+        };
+        using var handler = new ShareHandler();
+        using var http = new HttpClient(handler);
+        var share = new LineupShareService(EquipmentTestData.Rules, CacheDirectory, http);
+        var original = JsonSerializer.Serialize(lineup);
+        var originalUrl = await share.ExportAsync(lineup);
+        var tab = lineup.Guide.Tabs[0];
+        switch (change)
+        {
+            case "text": tab.OperationIdea = "修改后原文"; break;
+            case "skill": tab.Operators[0].SkillId = "skill-b"; break;
+            case "module": tab.Operators[0].ModuleId = "module-b"; break;
+            case "equipment": tab.Equipment[0] = new() { ItemId = "item-b", Name = "精准狙击镜" }; break;
+            case "round": tab.EndRound = 7; break;
+            case "sourceData": tab.SourceData = JsonSerializer.SerializeToElement(new { extra = "preserve" }); break;
+        }
+        (await share.ExportAsync(lineup)).Should().NotBe(originalUrl);
+        (await share.ExportAsync(JsonSerializer.Deserialize<Lineup>(original)!)).Should().Be(originalUrl);
+        handler.Calls.Should().Be(2);
+    }
+
+    [Theory]
     [InlineData(29, 1)]
     [InlineData(30, 2)]
     [InlineData(31, 2)]

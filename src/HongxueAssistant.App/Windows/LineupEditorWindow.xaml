@@ -202,7 +202,11 @@
                     Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1" CornerRadius="{DynamicResource RowCornerRadius}">
                 <StackPanel>
-                    <TextBlock Text="来源攻略" Style="{StaticResource FilterSectionTitle}" Margin="0,0,0,5" />
+                    <DockPanel Margin="0,0,0,5">
+                        <Button x:Name="GuideFlowButton" DockPanel.Dock="Right" Content="攻略流程" Visibility="Collapsed"
+                                Style="{StaticResource EditorGhostButton}" Click="OnGuideFlowClick" />
+                        <TextBlock Text="来源攻略" Style="{StaticResource FilterSectionTitle}" VerticalAlignment="Center" />
+                    </DockPanel>
                     <TextBox x:Name="SourceUrlBox" IsReadOnly="True" TextWrapping="Wrap" Style="{StaticResource DialogTextBox}"
                              ToolTip="可选中文字复制原攻略链接" />
                     <TextBlock x:Name="ImportNoticeText" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="11"

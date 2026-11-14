@@ -45,3 +45,6 @@ Base v1.8.0: 11be6018c8ebdf0085ef0aabc93f9ceef3212dfa.
 Upstream test/documentation fixes through a0dfcfb125bed8309017c538fdbea4337c4e8428 retained.
 Adds focused MuMu displays, same-display input/capture, source-checked OCR, focus/snap and suspended mandatory picks.
 Repository: friends-xiaohuli/HongxueAssistant. Original attribution and licenses preserved.
+
+Further local enhancements, 2026-11-14: complete Skland guide snapshots and phase-copy UI;
+GitHub API/download route diagnostics and fallback with package integrity checks.
