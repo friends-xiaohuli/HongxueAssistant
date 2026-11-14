@@ -25,10 +25,10 @@ public enum UpdateRouteState { Available, NoRelease, NotTested, Failed, TimedOut
 public sealed record UpdateRouteProbeResult(
     GitHubUpdateRoute Route, UpdateRouteState ApiState, string ApiDetail,
     UpdateRouteState DownloadState, string DownloadDetail, long ElapsedMilliseconds,
-    string ApiUrl, string? DownloadUrl, bool UsesPublicSample)
+    string ApiUrl, string? DownloadUrl)
 {
     public string ApiSummary => $"版本接口：{ApiDetail}";
-    public string DownloadSummary => $"{(UsesPublicSample ? "公共下载样本" : "安装包下载")}：{DownloadDetail}";
+    public string DownloadSummary => $"安装包下载：{DownloadDetail}";
     public string TimingSummary => $"耗时 {ElapsedMilliseconds / 1000d:0.0} 秒";
     public string TestedUrls => $"{ApiUrl}\n{DownloadUrl}";
 }
@@ -39,9 +39,6 @@ public sealed class UpdateRouteException(string message) : HttpRequestException(
 /// <summary>Only forwards public GitHub URLs. A proxy homepage status is never used as a health check.</summary>
 public sealed class GitHubUpdateTransport
 {
-    public const string PublicDownloadSampleUrl =
-        "https://github.com/benbuck/rbtray/releases/download/v4.14/x64.zip";
-
     public static IReadOnlyList<GitHubUpdateRoute> DefaultRoutes { get; } = Array.AsReadOnly(new[]
     {
         new GitHubUpdateRoute("GitHub 直连"),
@@ -53,7 +50,6 @@ public sealed class GitHubUpdateTransport
         new GitHubUpdateRoute("gh-proxy.org", "https://gh-proxy.org"),
         new GitHubUpdateRoute("fastgit.cc", "https://fastgit.cc"),
         new GitHubUpdateRoute("gh.noki.icu", "https://gh.noki.icu"),
-        new GitHubUpdateRoute("ghproxy.net", "https://ghproxy.net"),
         new GitHubUpdateRoute("githubproxy.gohj99.site", "https://githubproxy.gohj99.site"),
         new GitHubUpdateRoute("GH-Proxy CDN（同服务节点）", "https://cdn.gh-proxy.org"),
         new GitHubUpdateRoute("GH-Proxy 香港（同服务节点）", "https://hk.gh-proxy.org"),
@@ -144,8 +140,28 @@ public sealed class GitHubUpdateTransport
         string feedUrl, string? downloadUrl = null, IProgress<UpdateRouteProbeResult>? progress = null,
         CancellationToken ct = default)
     {
+        if (IsDefaultFeed(feedUrl) && downloadUrl is not null && !IsRepositoryAssetUrl(downloadUrl))
+            throw new ArgumentException("线路测试仅使用本仓库的 GitHub Release 安装包。", nameof(downloadUrl));
+
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(_probeTimeout);
+        var unavailableDetail = "未能确定本仓库安装包，未测试";
+        if (downloadUrl is null)
+        {
+            try
+            {
+                // Resolve once, direct first, so even download-only proxies test the same real asset.
+                var release = await ReadReleaseAsync(feedUrl, budget.Token);
+                downloadUrl = release.DownloadUrl;
+                unavailableDetail = release.NoRelease ? "仓库暂无发布版本，未测试" : "该发布没有 Windows x64 安装包，未测试";
+            }
+            catch (Exception ex) when (IsRouteFailure(ex) && !ct.IsCancellationRequested)
+            {
+                // Never substitute a different project's package when metadata is unavailable.
+            }
+        }
+        ct.ThrowIfCancellationRequested();
+
         using var gate = new SemaphoreSlim(_maxConcurrency);
         var tasks = _routes.Select(async route =>
         {
@@ -156,13 +172,13 @@ public sealed class GitHubUpdateTransport
                 await gate.WaitAsync(budget.Token);
                 // Measure this route, not time spent waiting behind earlier probes.
                 watch.Restart();
-                try { result = await ProbeRouteAsync(route, feedUrl, downloadUrl, watch, budget.Token); }
+                try { result = await ProbeRouteAsync(route, feedUrl, downloadUrl, unavailableDetail, watch, budget.Token); }
                 finally { gate.Release(); }
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 result = new(route, UpdateRouteState.TimedOut, "测试总时限已到", UpdateRouteState.NotTested,
-                    "未完成", watch.ElapsedMilliseconds, route.Resolve(feedUrl), null, false);
+                    "未完成", watch.ElapsedMilliseconds, route.Resolve(feedUrl), downloadUrl is null ? null : route.Resolve(downloadUrl));
             }
             progress?.Report(result);
             return result;
@@ -174,17 +190,15 @@ public sealed class GitHubUpdateTransport
     }
 
     private async Task<UpdateRouteProbeResult> ProbeRouteAsync(GitHubUpdateRoute route, string feedUrl,
-        string? suppliedDownloadUrl, Stopwatch watch, CancellationToken ct)
+        string? packageUrl, string unavailableDetail, Stopwatch watch, CancellationToken ct)
     {
         var apiState = UpdateRouteState.Failed;
         var apiDetail = "未完成";
-        string? packageUrl = suppliedDownloadUrl;
         try
         {
             var release = await ReadReleaseOnRouteAsync(route, feedUrl, ct);
             apiState = release.NoRelease ? UpdateRouteState.NoRelease : UpdateRouteState.Available;
             apiDetail = release.NoRelease ? "可访问，仓库暂无发布版本" : "可用（发布 JSON 已验证）";
-            packageUrl ??= release.DownloadUrl;
         }
         catch (Exception ex) when (IsRouteFailure(ex) && !ct.IsCancellationRequested)
         {
@@ -192,8 +206,10 @@ public sealed class GitHubUpdateTransport
             apiDetail = DescribeFailure(ex);
         }
         ct.ThrowIfCancellationRequested();
-        var usesSample = packageUrl is null;
-        packageUrl ??= PublicDownloadSampleUrl;
+        if (packageUrl is null)
+            return new(route, apiState, apiDetail, UpdateRouteState.NotTested, unavailableDetail,
+                watch.ElapsedMilliseconds, route.Resolve(feedUrl), null);
+
         var downloadState = UpdateRouteState.Failed;
         string downloadDetail;
         try
@@ -207,7 +223,7 @@ public sealed class GitHubUpdateTransport
             await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
             await ReadZipSignatureAsync(stream, timeout.Token);
             downloadState = UpdateRouteState.Available;
-            downloadDetail = "可用（仅验证 ZIP 文件头）";
+            downloadDetail = "可用（本仓库安装包 ZIP 文件头已验证）";
         }
         catch (Exception ex) when (IsRouteFailure(ex) && !ct.IsCancellationRequested)
         {
@@ -215,7 +231,7 @@ public sealed class GitHubUpdateTransport
             downloadDetail = DescribeFailure(ex);
         }
         return new(route, apiState, apiDetail, downloadState, downloadDetail, watch.ElapsedMilliseconds,
-            route.Resolve(feedUrl), route.Resolve(packageUrl), usesSample);
+            route.Resolve(feedUrl), route.Resolve(packageUrl));
     }
 
     private async Task<GitHubReleaseReadResult> ReadReleaseOnRouteAsync(

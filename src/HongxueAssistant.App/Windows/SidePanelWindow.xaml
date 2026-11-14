@@ -406,7 +406,7 @@
                                         </DockPanel>
                                         <TextBlock Text="优先直连，失败后尝试代理。第三方线路仅转发公开资源；建议使用直连。"
                                                    FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
-                                        <TextBlock Text="版本接口与下载分别测试；仓库暂无发布时，下载仅测试公共 ZIP 样本，不会安装。每次最多 45 秒，可取消。"
+                                        <TextBlock Text="版本接口与下载均测试本仓库；所有线路使用同一份最新安装包，仅读取 ZIP 文件头，不安装。暂无发布时跳过下载测试。每次最多 45 秒，可取消。"
                                                    FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                                         <TextBlock x:Name="UpdateRoutesStatus" FontSize="11" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />

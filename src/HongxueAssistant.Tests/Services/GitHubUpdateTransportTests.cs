@@ -35,7 +35,7 @@ public class GitHubUpdateTransportTests
     }
 
     [Fact]
-    public async Task ProbeDistinguishesNoReleaseFromFailureAndReadsOnlyZipHeader()
+    public async Task ProbeWithoutReleaseDoesNotRequestAnotherProjectsPackage()
     {
         var urls = new ConcurrentQueue<string>();
         using var handler = new StubHandler((request, _) =>
@@ -44,28 +44,35 @@ public class GitHubUpdateTransportTests
             urls.Enqueue(url);
             if (url.EndsWith("/releases/latest")) return Task.FromResult(Json("{\"message\":\"Not Found\"}", HttpStatusCode.NotFound));
             if (url.EndsWith("/HongxueAssistant")) return Task.FromResult(Json("{\"full_name\":\"friends-xiaohuli/HongxueAssistant\"}"));
+            throw new InvalidOperationException("A missing release must never trigger a sample download.");
+        });
+        using var http = new HttpClient(handler);
+        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
+        reports.Should().HaveCount(2).And.OnlyContain(report => report.ApiState == UpdateRouteState.NoRelease
+            && report.DownloadState == UpdateRouteState.NotTested && report.DownloadUrl == null);
+        reports.Should().OnlyContain(report => report.DownloadDetail.Contains("暂无发布"));
+        urls.Should().OnlyContain(url => url.Contains("/friends-xiaohuli/HongxueAssistant"));
+    }
+
+    [Fact]
+    public async Task DownloadOnlyProxyUsesTheRepositoryAssetResolvedByDirectApi()
+    {
+        var urls = new ConcurrentQueue<string>();
+        using var handler = new StubHandler((request, _) =>
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            urls.Enqueue(url);
+            if (request.RequestUri.Host == "api.github.com") return Task.FromResult(Json(Release));
+            if (url.Contains("api.github.com")) return Task.FromResult(Json("{\"message\":\"Forbidden\"}", HttpStatusCode.Forbidden));
             request.Headers.Range!.ToString().Should().Be("bytes=0-3");
             return Task.FromResult(Binary([80, 75, 3, 4], HttpStatusCode.PartialContent));
         });
         using var http = new HttpClient(handler);
         var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
-        reports.Should().HaveCount(2).And.OnlyContain(report => report.ApiState == UpdateRouteState.NoRelease
-            && report.DownloadState == UpdateRouteState.Available && report.UsesPublicSample);
-        reports.Should().OnlyContain(report => report.DownloadUrl!.Contains("/benbuck/rbtray/releases/download/"));
-        urls.Should().HaveCount(6);
-        urls.Should().NotContain("https://proxy.example/");
-    }
-
-    [Fact]
-    public async Task DownloadOnlyProxyCanBeAvailableWhenItsApiIsForbidden()
-    {
-        using var handler = new StubHandler((request, _) => Task.FromResult(request.RequestUri!.AbsoluteUri.Contains("api.github.com")
-            ? Json("{\"message\":\"Forbidden\"}", HttpStatusCode.Forbidden)
-            : Binary([80, 75, 3, 4], HttpStatusCode.PartialContent)));
-        using var http = new HttpClient(handler);
-        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
-        reports.Should().OnlyContain(report => report.ApiState == UpdateRouteState.Failed
-            && report.ApiDetail.Contains("403") && report.DownloadState == UpdateRouteState.Available);
+        reports.Single(report => report.Route == Proxy).ApiDetail.Should().Contain("403");
+        reports.Should().OnlyContain(report => report.DownloadState == UpdateRouteState.Available);
+        reports.Single(report => report.Route == Proxy).DownloadUrl.Should().Be(Proxy.Resolve(Package));
+        urls.Should().OnlyContain(url => url.Contains("friends-xiaohuli/HongxueAssistant"));
     }
 
     [Fact]
@@ -73,7 +80,7 @@ public class GitHubUpdateTransportTests
     {
         using var handler = new StubHandler((_, _) => Task.FromResult(Html("<html>proxy challenge</html>")));
         using var http = new HttpClient(handler);
-        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
+        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl, Package);
         reports.Should().OnlyContain(report => report.ApiState == UpdateRouteState.Failed
             && report.DownloadState == UpdateRouteState.Failed);
     }
@@ -96,7 +103,7 @@ public class GitHubUpdateTransportTests
         using var handler = new StubHandler((request, _) => Task.FromResult(request.RequestUri!.AbsoluteUri.Contains("api.github.com")
             ? Json(payload, HttpStatusCode.NotFound) : Binary([80, 75, 3, 4])));
         using var http = new HttpClient(handler);
-        var results = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
+        var results = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl, Package);
         results.Should().OnlyContain(result => result.ApiState == UpdateRouteState.Failed && result.DownloadState == UpdateRouteState.Available);
     }
 
@@ -113,7 +120,7 @@ public class GitHubUpdateTransportTests
             ? Json(payload) : Binary([80, 75, 3, 4])));
         using var http = new HttpClient(handler);
         var transport = new GitHubUpdateTransport(http, [Direct, Proxy]);
-        var results = await transport.ProbeAsync(UpdateService.DefaultFeedUrl);
+        var results = await transport.ProbeAsync(UpdateService.DefaultFeedUrl, Package);
         results.Should().OnlyContain(result => result.ApiState == UpdateRouteState.Failed && result.DownloadState == UpdateRouteState.Available);
     }
 
@@ -131,7 +138,7 @@ public class GitHubUpdateTransportTests
     }
 
     [Fact]
-    public async Task ProbeUsesActualReleaseAssetWhenAvailableInsteadOfSample()
+    public async Task ProbeUsesTheLatestRepositoryReleaseAsset()
     {
         var requests = new ConcurrentQueue<string>();
         using var handler = new StubHandler((request, _) =>
@@ -141,9 +148,57 @@ public class GitHubUpdateTransportTests
         });
         using var http = new HttpClient(handler);
         var reports = await new GitHubUpdateTransport(http, [Direct]).ProbeAsync(UpdateService.DefaultFeedUrl);
-        reports.Single().UsesPublicSample.Should().BeFalse();
         reports.Single().DownloadUrl.Should().Be(Package);
-        requests.Should().Equal(UpdateService.DefaultFeedUrl, Package);
+        requests.Should().Equal(UpdateService.DefaultFeedUrl, UpdateService.DefaultFeedUrl, Package);
+    }
+
+    [Fact]
+    public async Task EveryRouteTestsTheSameLatestPackageEvenWhenProxyMetadataIsStale()
+    {
+        var downloads = new ConcurrentQueue<string>();
+        using var handler = new StubHandler((request, _) =>
+        {
+            var url = request.RequestUri!.AbsoluteUri;
+            if (request.RequestUri.Host == "api.github.com") return Task.FromResult(Json(Release));
+            if (url.Contains("api.github.com")) return Task.FromResult(Json(Release.Replace("v99.0.0", "v98.0.0")));
+            downloads.Enqueue(url);
+            return Task.FromResult(Binary([80, 75, 3, 4]));
+        });
+        using var http = new HttpClient(handler);
+        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
+        reports.Should().OnlyContain(report => report.DownloadState == UpdateRouteState.Available);
+        downloads.Should().BeEquivalentTo([Package, Proxy.Resolve(Package)]);
+        downloads.Should().NotContain(url => url.Contains("v98.0.0"));
+    }
+
+    [Fact]
+    public async Task ReleaseWithoutWindowsPackageSkipsDownloadsWithoutExternalSample()
+    {
+        var urls = new ConcurrentQueue<string>();
+        using var handler = new StubHandler((request, _) =>
+        {
+            urls.Enqueue(request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(Json("{\"tag_name\":\"v99.0.0\",\"assets\":[]}"));
+        });
+        using var http = new HttpClient(handler);
+        var reports = await new GitHubUpdateTransport(http, [Direct, Proxy]).ProbeAsync(UpdateService.DefaultFeedUrl);
+        reports.Should().OnlyContain(report => report.ApiState == UpdateRouteState.Available
+            && report.DownloadState == UpdateRouteState.NotTested && report.DownloadUrl == null);
+        reports.Should().OnlyContain(report => report.DownloadDetail.Contains("没有 Windows x64 安装包"));
+        urls.Should().OnlyContain(url => url.EndsWith("/friends-xiaohuli/HongxueAssistant/releases/latest"));
+    }
+
+    [Fact]
+    public async Task DefaultRepositoryProbeRejectsAnExplicitPackageFromAnotherProjectBeforeAnyRequest()
+    {
+        var calls = 0;
+        using var handler = new StubHandler((_, _) => { calls++; return Task.FromResult(Json(Release)); });
+        using var http = new HttpClient(handler);
+        var transport = new GitHubUpdateTransport(http, [Direct, Proxy]);
+        Func<Task> probe = () => transport.ProbeAsync(UpdateService.DefaultFeedUrl,
+            "https://github.com/other/project/releases/download/v1/sample.zip");
+        await probe.Should().ThrowAsync<ArgumentException>();
+        calls.Should().Be(0);
     }
 
     [Fact]
@@ -202,7 +257,7 @@ public class GitHubUpdateTransportTests
         using var http = new HttpClient(handler);
         var routes = new[] { Direct }.Concat(Enumerable.Range(0, 6).Select(index => new GitHubUpdateRoute($"proxy{index}", $"https://proxy{index}.example"))).ToArray();
         var transport = new GitHubUpdateTransport(http, routes, TimeSpan.FromMilliseconds(25), TimeSpan.FromSeconds(2), 2);
-        var results = await transport.ProbeAsync(UpdateService.DefaultFeedUrl);
+        var results = await transport.ProbeAsync(UpdateService.DefaultFeedUrl, Package);
         maximum.Should().BeLessThanOrEqualTo(2);
         results.Should().HaveCount(routes.Length);
         results.Should().OnlyContain(report => report.ApiState == UpdateRouteState.TimedOut && report.DownloadState == UpdateRouteState.TimedOut);
