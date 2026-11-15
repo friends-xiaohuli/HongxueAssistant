@@ -23,6 +23,96 @@ namespace HongxueAssistant.Tests.Views;
 
 internal static class ClearAndLineupSourceViewTests
 {
+    public static void VerifyCodex()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "codex-ui-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        Operator[] operators = [new() { Name = "甲", Tier = 1 }, new() { Name = "乙", Tier = 2 }];
+        Equipment[] equipment = [new() { Name = "装备甲", Tier = 1 }, new() { Name = "装备乙", Tier = 2 }];
+        var operatorVm = new OperatorBrowseViewModel();
+        operatorVm.LoadOperators(operators.ToList());
+        var equipmentVm = new EquipmentBrowseViewModel();
+        equipmentVm.LoadEquipment(equipment.ToList(), [], [], new Dictionary<string, string>());
+        var calculator = new CovenantCalculator(operators, [], new Dictionary<string, string>());
+        var tracking = new TrackingViewModel();
+        var bans = new BanViewModel();
+        operatorVm.SetBanChecker(bans.IsBanned);
+        var panel = new SidePanelWindow(operatorVm, equipmentVm, tracking,
+            new GameStateViewModel(), bans, new EnemyViewModel(),
+            new LineupViewModel(new LineupStore(Path.Combine(folder, "lineups"), calculator.EquipmentRules), calculator),
+            new LineupShareService(calculator.EquipmentRules, Path.Combine(folder, "share")), operators, equipment, [],
+            new SettingsManager(folder), GameShopTheme.Terminal, new SidePanelPositionSettings { FreeMovement = true })
+        { Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000, Height = 900 };
+        try
+        {
+            panel.Show();
+            Pump();
+            var tabs = (TabControl)panel.FindName("MainTabs");
+            var codex = (TabItem)panel.FindName("CodexTab");
+            var segment = (ListBox)panel.FindName("CodexSegment");
+            var operatorView = (OperatorBrowseView)panel.FindName("OperatorView");
+            var equipmentView = (EquipmentBrowseView)panel.FindName("EquipmentView");
+            tabs.Items.OfType<TabItem>().Select(t => t.Header).Should().Equal("图鉴", "追踪", "阵容", "对局信息");
+            segment.SelectedIndex.Should().Be(0);
+            operatorView.Visibility.Should().Be(Visibility.Visible);
+            equipmentView.Visibility.Should().Be(Visibility.Collapsed);
+            ((TextBox)operatorView.FindName("SearchBox")).Text = "甲";
+            operatorVm.TierChips.Single(c => c.Value == "1").IsSelected = true;
+            tracking.AddTracking("甲", TrackingType.Operator);
+            tracking.AddTracking("装备甲", TrackingType.Equipment);
+            bans.ToggleBan("乙");
+            foreach (var theme in Enum.GetValues<GameShopTheme>())
+            foreach (var night in new[] { false, true })
+            foreach (var width in new[] { 280, 360 })
+            {
+                ThemeManager.Apply(theme, night);
+                panel.Width = width;
+                foreach (var index in new[] { 1, 0 })
+                {
+                    tabs.SelectedItem = codex;
+                    segment.SelectedIndex = index;
+                    if (index == 1)
+                    {
+                        ((TextBox)equipmentView.FindName("SearchBox")).Text = "装备甲";
+                        equipmentVm.TierChips.Single(c => c.Value == "1").IsSelected = true;
+                    }
+                    Await(Task.Delay(240));
+                    panel.UpdateLayout();
+                    Pump();
+                    tabs.SelectedItem.Should().BeSameAs(codex, "segment selection stays within 图鉴");
+                    operatorView.Visibility.Should().Be(index == 0 ? Visibility.Visible : Visibility.Collapsed);
+                    equipmentView.Visibility.Should().Be(index == 1 ? Visibility.Visible : Visibility.Collapsed);
+                    var selected = (ListBoxItem)segment.SelectedItem;
+                    selected.ActualWidth.Should().BeGreaterThan(0);
+                    selected.ActualWidth.Should().BeApproximately(((ListBoxItem)segment.Items[1 - index]).ActualWidth, 1);
+                    Save((FrameworkElement)codex.Content, $"codex-{theme}-{night}-{width}-{index}");
+                    foreach (var tab in tabs.Items.OfType<TabItem>().Skip(1))
+                    {
+                        tabs.SelectedItem = tab;
+                        Pump();
+                        ((FrameworkElement)tab.Content).IsVisible.Should().BeTrue();
+                    }
+                    tabs.SelectedItem = codex;
+                    Pump();
+                    segment.SelectedIndex.Should().Be(index);
+                    operatorVm.SearchText.Should().Be("甲");
+                    operatorVm.FilteredOperators.Select(o => o.Name).Should().Equal("甲");
+                    equipmentVm.SearchText.Should().Be("装备甲");
+                    equipmentVm.FilteredEquipment.Select(e => e.Name).Should().Equal("装备甲");
+                    tracking.IsTracked("甲").Should().BeTrue();
+                    tracking.IsTracked("装备甲").Should().BeTrue();
+                    bans.IsBanned("乙").Should().BeTrue();
+                }
+            }
+        }
+        finally
+        {
+            User32.UnregisterHotKey(new System.Windows.Interop.WindowInteropHelper(panel).Handle, 0x4153);
+            panel.Close();
+            Directory.Delete(folder, true);
+        }
+    }
+
     public static void Verify()
     {
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext());
@@ -58,13 +148,13 @@ internal static class ClearAndLineupSourceViewTests
             panel.PlannerVm.CurrentTerminalLevel.Should().Be(4);
             tracking.ResetTerminalLevel();
 
-            var operatorView = (OperatorBrowseView)panel.FindName("OperatorView");
+            var runView = (RunBanView)panel.FindName("RunBanView");
             bans.SetBans(["甲"]);
             bans.SetCovenantBans(["炎"]);
             bans.ToggleBan("乙");
             operatorVm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
             operatorVm.SetAvailableCovenants(["维多利亚"]);
-            ((MenuItem)operatorView.FindName("ClearHighlightsButton")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            ((Button)runView.FindName("ClearHighlightsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Pump();
             bans.BannedNames.Should().BeEquivalentTo("乙");
             bans.BannedCovenants.Should().BeEmpty();
@@ -72,12 +162,12 @@ internal static class ClearAndLineupSourceViewTests
             panel.PlannerVm.HasRunInfo.Should().BeFalse();
             operatorVm.FilteredOperators.Should().Contain(o => o.Name == "甲").And.NotContain(o => o.Name == "乙");
             bans.SetCovenantBans(["炎"]);
-            ((MenuItem)operatorView.FindName("ClearBansButton")).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            ((Button)runView.FindName("ClearBansButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Pump();
             bans.BannedNames.Should().BeEmpty();
             bans.BannedCovenants.Should().BeEmpty();
             operatorVm.FilteredOperators.Should().HaveCount(4);
-            lineups.SelectedAvailabilityFilter = AvailabilityFilter.Available;
+            lineups.SelectedAvailabilityFilter.Should().Be(LineupAvailabilityFilter.All);
             lineups.VisibleLineups.Should().HaveCount(2);
             operatorVm.SelectedAvailabilityFilter = AvailabilityFilter.All;
             var inputModel = new InputModel { Text = "测试输入" };
@@ -120,7 +210,8 @@ internal static class ClearAndLineupSourceViewTests
             finally { inputHost.Close(); }
 
             var mainTabs = (TabControl)panel.FindName("MainTabs");
-            mainTabs.SelectedIndex = 3;
+            mainTabs.SelectedItem = panel.FindName("LineupsTab");
+            ((ListBox)panel.FindName("LineupsSegment")).SelectedIndex = 0;
             Pump();
             var lineupView = (LineupListView)panel.FindName("LineupView");
             tracking.TrackLineup(a);
@@ -142,7 +233,7 @@ internal static class ClearAndLineupSourceViewTests
             var state = new DeployPoolState();
             var trackingView = (TrackingView)panel.FindName("TrackingView");
             trackingView.DeployPage.Initialize(operators.ToDictionary(o => o.Name), [], null, tracking, settings, state, false);
-            mainTabs.SelectedIndex = 2;
+            mainTabs.SelectedItem = mainTabs.Items.OfType<TabItem>().Single(t => ReferenceEquals(t.Content, trackingView));
             var pages = (ListBox)trackingView.FindName("TrackingPageList");
             pages.SelectedIndex = 0;
             Pump();
@@ -213,7 +304,8 @@ internal static class ClearAndLineupSourceViewTests
             ClickClear(operatorSearch);
             operatorVm.SearchText.Should().BeEmpty();
 
-            mainTabs.SelectedIndex = 3;
+            mainTabs.SelectedItem = panel.FindName("LineupsTab");
+            ((ListBox)panel.FindName("LineupsSegment")).SelectedIndex = 0;
             Pump();
             var apply = new Lineup { Id = "a", Name = "已保存的新阵容", Slots = [new() { OperatorName = "乙" }] };
             ChooseConfirmation(panel, () => panel.SaveEditedLineupAsync(apply, true), true);

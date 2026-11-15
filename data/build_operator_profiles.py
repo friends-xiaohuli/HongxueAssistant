@@ -201,7 +201,7 @@ def main() -> None:
     used_ranges: set[str] = set()
     for chess_id, entry in shop.items():
         chess = chess_dict.get(chess_id)
-        if not chess or not chess.get("upgradeChessId") or entry.get("isHidden") or "diy" in chess_id:
+        if not chess or not chess.get("upgradeChessId") or "diy" in chess_id:
             continue
         char = chars.get(entry["charId"])
         if not char or char["name"] not in by_name:

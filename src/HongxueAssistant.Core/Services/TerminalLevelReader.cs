@@ -38,7 +38,7 @@ public sealed class TerminalLevelReader(IOcrEngine ocr, Func<byte[], int, int, i
     /// <summary>Returns the level, or null when the shop's upgrade card is not visible / not readable.</summary>
     public async Task<int?> ReadAsync(byte[] png, int width, int height, GameShopTheme theme)
     {
-        double s = height / 1080.0;
+        double s = Math.Min(width / 1920.0, height / 1080.0);
         // The 升级 / 已满级 text sits at y≈980 (1080p) in every skin. The card sits left of the shop slots, so its
         // x depends on the slot count (6 / 5 / 4 / 3 slots ↔ 218 px steps). Reading those few spots without text
         // detection is ~10× cheaper than detecting over the whole bottom band, which is only the fallback.
@@ -48,13 +48,13 @@ public sealed class TerminalLevelReader(IOcrEngine ocr, Func<byte[], int, int, i
             int c = (int)Math.Round(width / 2.0 + (-685 + 218 * (6 - slots)) * s);
             int bx = c - (int)(55 * s);
             if (bx < 0) continue;
-            var line = await ocr.RecognizeLineAsync(png, bx, (int)(962 * s), (int)(110 * s), (int)(40 * s));
+            var line = await ocr.RecognizeLineAsync(png, bx, height - (int)(118 * s), (int)(110 * s), (int)(40 * s));
             var hit = line.FirstOrDefault(t => IsButton(t.Text));
             if (hit is not null) button = (hit.Text, c);
         }
         if (button is null)
         {
-            var texts = await ocr.RecognizeRegionAsync(png, 0, (int)(950 * s), (int)(width * 0.75), (int)(80 * s));
+            var texts = await ocr.RecognizeRegionAsync(png, 0, height - (int)(130 * s), (int)(width * 0.75), (int)(80 * s));
             var hit = texts.FirstOrDefault(t => t.Text.Contains("满级", StringComparison.Ordinal))
                       ?? texts.FirstOrDefault(t => IsButton(t.Text));
             if (hit is not null) button = (hit.Text, hit.Box.X + hit.Box.W / 2);
@@ -62,8 +62,8 @@ public sealed class TerminalLevelReader(IOcrEngine ocr, Func<byte[], int, int, i
         if (button is not { } found) return null;
         if (found.Text.Contains("满级", StringComparison.Ordinal)) return MaxLevel;
 
-        // Closure's dark strokes sit above their fading reflections; include the full glyph at window scale.
-        int x0 = found.CenterX - (int)((theme == GameShopTheme.Closure ? 80 : 60) * s), y0 = (int)((theme == GameShopTheme.Closure ? 845 : 870) * s);
+        // The card keeps its size and bottom anchor when the frame's aspect ratio changes.
+        int x0 = found.CenterX - (int)((theme == GameShopTheme.Closure ? 80 : 60) * s), y0 = height - (int)((theme == GameShopTheme.Closure ? 235 : 210) * s);
         int w = (int)((theme == GameShopTheme.Closure ? 160 : 120) * s), h = (int)((theme == GameShopTheme.Closure ? 110 : 95) * s);
         if (x0 < 0 || x0 + w > width) return null;
 

@@ -73,7 +73,7 @@
                 <Button x:Name="TrackButton" Width="28" Height="28" Tag="{StaticResource IconStar}"
                         Style="{StaticResource RowIconButton}" Click="OnTrackClick" />
                 <Button x:Name="BanButton" Width="28" Height="28" Tag="{StaticResource IconBan}"
-                        Style="{StaticResource RowIconButton}" Click="OnBanClick" />
+                        Style="{StaticResource RowIconButton}" ToolTipService.ShowOnDisabled="True" Click="OnBanClick" />
             </StackPanel>
             <!-- kept for the banned state text in tooltips / tests -->
             <Border x:Name="BanBadge" Visibility="Collapsed" Width="0" />

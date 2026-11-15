@@ -21,7 +21,7 @@ public static class PlannerStrategies
     public const string MechId = "band_mech";
     public const string PithId = "band_pith";
     public const string ShapeshifterId = "band_damaztic";
-    public const string PithName = "优等生 Pith";
+    public const string PithName = "盟约·辅助干员";
     /// <summary>暴躁铁皮 holds one 变形同构体 plus job-change gear: 4 slots (3 transformations), 6 when elite (5).</summary>
     public static int MechTransformCap(bool elite) => elite ? 5 : 3;
     /// <summary>One free 变形同构体 every 5 rounds of a 15-round run.</summary>

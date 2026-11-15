@@ -8,6 +8,18 @@ namespace HongxueAssistant.Tests.Data;
 public class SettingsManagerTests : IDisposable
 {
     [Fact]
+    public async Task AutomaticPurchasesDefaultOffAndRoundTripWithoutChangingTracking()
+    {
+        await _manager.SaveTrackingEntriesAsync([new() { Name = "角峰", Type = TrackingType.Operator }]);
+        (await _manager.LoadAutomaticPurchaseTrackingAsync()).Should().BeFalse();
+        await _manager.SaveAutomaticPurchaseTrackingAsync(true);
+        (await new SettingsManager(_tempDir).LoadAutomaticPurchaseTrackingAsync()).Should().BeTrue();
+        await _manager.SaveAutomaticPurchaseTrackingAsync(false);
+        (await new SettingsManager(_tempDir).LoadAutomaticPurchaseTrackingAsync()).Should().BeFalse();
+        (await _manager.LoadTrackingEntriesAsync(EquipmentTestData.Rules)).Should().ContainSingle().Which.Name.Should().Be("角峰");
+    }
+
+    [Fact]
     public async Task AutomaticGameThemeDefaultsToManualAndRoundTripsIndependently()
     {
         await _manager.SaveGameShopThemeAsync(GameShopTheme.Ursus);

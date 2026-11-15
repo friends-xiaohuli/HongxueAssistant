@@ -32,7 +32,7 @@ internal static class LineupFeatureTests
             var banned = new Lineup { Name = "后期不可用阵容", Slots = [new() { OperatorName = "角峰" }] };
             var vm = new LineupViewModel(store, calculator);
             vm.LoadLineups([source, banned]);
-            vm.SetBanChecker(name => name == "角峰");
+            vm.SetRunInfo(name => name == "角峰", new HashSet<string>());
             var view = new LineupListView { DataContext = vm };
             var host = new Window { Content = view, ShowActivated = false, ShowInTaskbar = false, Opacity = 0,
                 WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = -20000, Width = 360, Height = 760 };
@@ -74,10 +74,11 @@ internal static class LineupFeatureTests
                 Descendants<Button>(view).Last(b => Equals(b.ToolTip, "置顶阵容"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 requested.Should().Be((banned, 0));
-                vm.SetBanChecker(_ => false);
-                filter.SelectedIndex = 2;
+                vm.SetRunInfo(_ => false, new HashSet<string>());
+                filter.SelectedIndex = 3;
                 Pump();
-                ((EmptyState)view.FindName("EmptyHint")).Title.Should().Be("没有符合条件的阵容");
+                ((TextBlock)view.FindName("NoMatchHint")).Text.Should().Be("没有符合条件的阵容");
+                ((TextBlock)view.FindName("NoMatchHint")).Visibility.Should().Be(Visibility.Visible);
             }
             finally { host.Close(); }
 

@@ -81,14 +81,16 @@ internal static class UpdateAndTrayTests
                     Await(panel.SaveAssistantHotkeyAsync(keys[1]));
                     ((TextBlock)panel.FindName("AssistantHotkeyStatus")).Text.Should().Contain("占用").And.Contain("原设置保留");
                     Await(settings.LoadAssistantHotkeyAsync()).Should().Be(keys[0]);
-                    Await(panel.SaveAssistantHotkeyAsync(new AssistantHotkey(6, 0xBF)));
-                    ((TextBlock)panel.FindName("AssistantHotkeyStatus")).Text.Should().Contain("截图");
+                    Await(panel.SaveRecognitionHotkeyAsync(keys[2]));
+                    Await(panel.SaveAssistantHotkeyAsync(keys[2]));
+                    ((TextBlock)panel.FindName("AssistantHotkeyStatus")).Text.Should().Contain("快速识别");
                     Await(settings.LoadAssistantHotkeyAsync()).Should().Be(keys[0]);
+                    Await(panel.SaveRecognitionHotkeyAsync(null));
                     var activeId = (int)typeof(SidePanelWindow).GetField("_assistantHotkeyId", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(panel)!;
                     SendMessage(hwnd, User32.WM_HOTKEY, activeId, IntPtr.Zero);
                     panel.IsAssistantHidden.Should().BeTrue();
                     IsWindowVisible(hwnd).Should().BeFalse();
-                    overlay.IsVisible.Should().BeFalse();
+                    overlay.IsVisible.Should().BeTrue("hiding the assistant keeps in-game tracking visible");
                     SendMessage(hwnd, User32.WM_HOTKEY, activeId, IntPtr.Zero);
                     panel.IsAssistantHidden.Should().BeFalse();
                     IsWindowVisible(hwnd).Should().BeTrue();
@@ -215,6 +217,7 @@ internal static class UpdateAndTrayTests
         {
             Environment.SetEnvironmentVariable(UpdateService.FeedOverrideVariable, oldFeed);
             panel.ReleaseAssistantHotkey();
+            panel.ReleaseRecognitionHotkey();
             User32.UnregisterHotKey(new WindowInteropHelper(panel).Handle, 0x4153);
             panel.Close();
             overlay.Close();

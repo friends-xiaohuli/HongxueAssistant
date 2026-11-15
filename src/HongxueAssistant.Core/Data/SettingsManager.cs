@@ -37,7 +37,8 @@ public class SettingsManager
             var json = await File.ReadAllTextAsync(Path.Combine(_settingsDir, "game-connection.json"));
             var settings = JsonSerializer.Deserialize<GameConnectionSettings>(json, JsonOptions);
             if (settings is null || !Enum.IsDefined(settings.Source)
-                || settings.AdbPath is null || settings.AdbSerial is null || settings.WindowTitle is null)
+                || settings.AdbPath is null || settings.AdbSerial is null || settings.WindowTitle is null
+                || !Enum.IsDefined(settings.Emulator) || settings.AndroidPackageName is null || settings.AndroidDisplayId < 0)
                 throw new JsonException("游戏连接设置无效");
             return settings;
         }
@@ -56,6 +57,7 @@ public class SettingsManager
             Directory.CreateDirectory(_settingsDir);
             var path = Path.Combine(_settingsDir, "game-connection.json");
             await File.WriteAllTextAsync(path + ".tmp", JsonSerializer.Serialize(settings, JsonOptions));
+            if (File.Exists(path)) File.Copy(path, path + ".bak", overwrite: true);
             File.Move(path + ".tmp", path, overwrite: true);
         }
         finally { _gameConnectionLock.Release(); }
@@ -163,7 +165,6 @@ public class SettingsManager
         var path = Path.Combine(_settingsDir, "terminal-level.json");
         try
         {
-            if (level <= 0) { if (File.Exists(path)) File.Delete(path); return; }
             Directory.CreateDirectory(_settingsDir);
             await File.WriteAllTextAsync(path,
                 JsonSerializer.Serialize(new SavedTerminalLevel(level, nowUtc ?? DateTime.UtcNow)));
@@ -241,6 +242,24 @@ public class SettingsManager
             JsonSerializer.Serialize(enabled));
     }
 
+    public async Task<bool> LoadAutomaticPurchaseTrackingAsync()
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<bool>(await File.ReadAllTextAsync(Path.Combine(_settingsDir, "automatic-purchases.json")));
+        }
+        catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    public async Task SaveAutomaticPurchaseTrackingAsync(bool enabled)
+    {
+        Directory.CreateDirectory(_settingsDir);
+        await File.WriteAllTextAsync(Path.Combine(_settingsDir, "automatic-purchases.json"), JsonSerializer.Serialize(enabled));
+    }
+
     /// <summary>Draw deployable cells and enemy routes over the game board (on by default).</summary>
     public async Task<bool> LoadShowBoardOverlayAsync()
     {
@@ -292,9 +311,25 @@ public class SettingsManager
     }
 
     public async Task SaveAssistantHotkeyAsync(AssistantHotkey? hotkey)
+        => await SaveHotkeyAsync("assistant-hotkey.json", hotkey);
+
+    public async Task<AssistantHotkey?> LoadRecognitionHotkeyAsync()
+    {
+        string json;
+        try { json = await File.ReadAllTextAsync(Path.Combine(_settingsDir, "recognition-hotkey.json")); }
+        catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException) { return new AssistantHotkey(6, 0xBF); }
+        var hotkey = JsonSerializer.Deserialize<AssistantHotkey?>(json, JsonOptions);
+        if (hotkey?.ConflictReason() is { } reason) throw new JsonException(reason);
+        return hotkey;
+    }
+
+    public async Task SaveRecognitionHotkeyAsync(AssistantHotkey? hotkey)
+        => await SaveHotkeyAsync("recognition-hotkey.json", hotkey);
+
+    private async Task SaveHotkeyAsync(string fileName, AssistantHotkey? hotkey)
     {
         Directory.CreateDirectory(_settingsDir);
-        var path = Path.Combine(_settingsDir, "assistant-hotkey.json");
+        var path = Path.Combine(_settingsDir, fileName);
         try
         {
             await File.WriteAllTextAsync(path + ".tmp", JsonSerializer.Serialize(hotkey, JsonOptions));

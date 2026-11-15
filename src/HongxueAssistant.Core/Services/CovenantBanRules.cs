@@ -10,8 +10,8 @@ namespace HongxueAssistant.Core.Services;
 public static class CovenantBanRules
 {
     /// <summary>
-    /// An operator is unavailable only when every one of its covenants is banned: a single-covenant operator whose
-    /// covenant is banned, 霍尔海雅 with 精准 + 奥术 both banned, 纯烬艾雅法拉 only with 莱塔尼亚 + 聚合 + 远见 all banned.
+    /// All core covenants banned makes an operator unavailable, regardless of additional covenants.
+    /// Operators without a core covenant are unavailable only when all their additional covenants are banned.
     /// </summary>
     public static bool IsExcluded(Operator op, IReadOnlySet<string> bannedCovenants)
         => IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCovenants);
@@ -19,11 +19,9 @@ public static class CovenantBanRules
     public static bool IsExcluded(IEnumerable<string> core, IEnumerable<string> additional, IReadOnlySet<string> bannedCovenants)
     {
         if (bannedCovenants.Count == 0) return false;
-        var all = core.Concat(additional).Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
-        return all.Count > 0 && all.All(bannedCovenants.Contains);
+        var relevant = core.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
+        if (relevant.Count == 0)
+            relevant = additional.Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.Ordinal).ToList();
+        return relevant.Count > 0 && relevant.All(bannedCovenants.Contains);
     }
-    public static bool IsBanned(Operator op, IReadOnlySet<string> bannedCore, IReadOnlySet<string> bannedAdditional, bool selectsCoreGroup)
-        => selectsCoreGroup && op.CoreCovenants.Any(bannedCore.Contains)
-            || IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCore.Concat(bannedAdditional).ToHashSet(StringComparer.Ordinal));
-
 }

@@ -24,11 +24,7 @@ internal static class OperatorPickerTests
         {
             var operators = new JsonDataStore(Path.Combine(AppContext.BaseDirectory, "TestData", "Regulation"))
                 .LoadOperatorsAsync().GetAwaiter().GetResult();
-            foreach (var (name, next) in new[]
-            {
-                ("褐果", "灰喉"), ("拉普兰德", "烈夏"), ("夏栎", "野鬃"),
-                ("安哲拉", "奥斯塔"), ("复奏", "瑰盐")
-            })
+            foreach (var name in new[] { "褐果", "拉普兰德", "夏栎", "安哲拉", "复奏" })
             {
                 var picker = new OperatorPickerWindow(operators, "", new HashSet<string>())
                 {
@@ -46,21 +42,25 @@ internal static class OperatorPickerTests
                     content.UpdateLayout();
                     var scroll = Descendants<ScrollViewer>(list).First();
                     var index = list.Items.Cast<Operator>().ToList().FindIndex(op => op.Name == name);
-                    scroll.ScrollToVerticalOffset(index - 4);
+                    list.ScrollIntoView(list.Items[index]);
                     Pump();
                     var row = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(index);
+                    row.BringIntoView();
+                    Pump();
                     var point = row.TranslatePoint(new Point(100, 10), list);
                     var hit = VisualTreeHelper.HitTest(list, point).VisualHit;
                     ((Operator)((ListBoxItem)ItemsControl.ContainerFromElement(list, hit)).Content).Name.Should().Be(name);
                     RaiseMouse((UIElement)hit, Mouse.PreviewMouseDownEvent);
+                    var pressedOffset = scroll.VerticalOffset;
 
-                    // A partially visible selected row scrolls before the mouse is released.
+                    // Scroll one row between press and release; row height changes with the picker layout.
                     list.SelectedItem = row.Content;
                     row.BringIntoView();
+                    scroll.ScrollToVerticalOffset(pressedOffset + row.ActualHeight + row.Margin.Top + row.Margin.Bottom);
                     Pump();
                     hit = VisualTreeHelper.HitTest(list, point).VisualHit;
-                    ((Operator)((ListBoxItem)ItemsControl.ContainerFromElement(list, hit)).Content).Name.Should().Be(next,
-                        "the same screen point now hits the following row after scrolling");
+                    ((Operator)((ListBoxItem)ItemsControl.ContainerFromElement(list, hit)).Content).Name.Should().Be(((Operator)list.Items[index + 2]).Name,
+                        "the same screen point now hits the following grid row after scrolling");
                     RaiseMouse((UIElement)hit, Mouse.MouseUpEvent);
                     picker.Result.Should().Be(name, "scrolling between press and release must preserve the clicked operator");
                 }

@@ -249,6 +249,24 @@ class StrategyOperatorTests(unittest.TestCase):
         self.assertEqual(result[0]["tier"], 5)
         self.assertEqual(result[0]["additionalCovenants"], ["协防干员"])
 
+    def test_pith_strategy_piece_is_kept_with_its_actual_covenant(self):
+        season = {
+            "charChessDataDict": {"pith": {"upgradeChessId": "elite", "bondIds": ["harmony"], "garrisonIds": []},
+                                  "elite": {"upgradeChessId": None}},
+            "charShopChessDatas": {"pith": {"charId": "char_616_pithst", "chessLevel": 3, "isHidden": True}},
+            "garrisonDataDict": {}}
+        result = fetch.process_operators({"char_616_pithst": {"name": "盟约·辅助干员"}}, season,
+                                        {"harmony": {"name": "调和", "bondType": "REGULAR"}})
+        self.assertEqual(result[0]["requiredStrategyId"], "band_pith")
+        self.assertEqual(result[0]["additionalCovenants"], ["调和"])
+        self.assertEqual(result[0]["tier"], 3)
+
+    def test_dynamic_trait_uses_static_chess_description(self):
+        result = fetch.build_traits({"garrisonIds": ["refresh"], "desc": "<获得时>获得<@ba.vup>1</>次免费刷新"},
+                                    {"refresh": {"eventTypeDesc": "单次叠加",
+                                                 "garrisonDesc": "<获得时>获得{showtag_value_1}次免费刷新"}})
+        self.assertEqual(result, [{"traitType": "单次叠加", "traitDescription": "<获得时>获得1次免费刷新"}])
+
     def test_equipment_mapping_includes_additional_covenants(self):
         season = {
             "trapShopChessDatas": {"core": {"itemType": "EQUIP"}, "extra": {"itemType": "EQUIP"}},

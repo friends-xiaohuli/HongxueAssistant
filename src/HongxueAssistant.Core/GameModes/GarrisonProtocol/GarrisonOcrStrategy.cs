@@ -11,7 +11,7 @@ public class GarrisonOcrStrategy : IOcrStrategy
         new("Field", XPercent: 0.10, YPercent: 0.72, WidthPercent: 0.80, HeightPercent: 0.15),
         new("Bench", XPercent: 0.10, YPercent: 0.88, WidthPercent: 0.80, HeightPercent: 0.10),
         // Regulation: enemy leader and training types are in the right-hand panel.
-        new("EnemySectionScan", XPercent: 0.68, YPercent: 0.40, WidthPercent: 0.30, HeightPercent: 0.40),
+        new("EnemySectionScan", XPercent: 0.68, YPercent: 0.34, WidthPercent: 0.30, HeightPercent: 0.46),
         // Ban screen detection: scan the header area for "确认本局信息".
         new("BanConfirmText", XPercent: 0.25, YPercent: 0.00, WidthPercent: 0.50, HeightPercent: 0.10),
         // Ban screen: scan the left faction panel for covenant OCR pre-filter.

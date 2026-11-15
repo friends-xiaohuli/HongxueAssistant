@@ -1,10 +1,12 @@
-// Modified for ASP Assistant Regulation on 2026-11-11; see NOTICE.
+// Modified for HongxueAssistant on 2026-11-16; see NOTICE.
+// Modified for ASP Assistant Regulation on 2026-11-13; see NOTICE.
 using System.IO;
 using System.Windows;
 using HongxueAssistant.App.Windows;
 using HongxueAssistant.Core;
 using HongxueAssistant.Core.Data;
 using HongxueAssistant.Core.GameModes.GarrisonProtocol;
+using HongxueAssistant.Core.Models;
 using HongxueAssistant.Core.Services;
 using HongxueAssistant.Core.ViewModels;
 
@@ -112,8 +114,7 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         try
         {
-            var startupResult = Environment.GetEnvironmentVariable(UpdateStartupNotification.ResultVariable)
-                ?? Environment.GetEnvironmentVariable("ASPA_UPDATE_STARTUP_RESULT");
+            var startupResult = Environment.GetEnvironmentVariable(UpdateStartupNotification.ResultVariable);
             Environment.SetEnvironmentVariable(UpdateStartupNotification.ResultVariable, null);
             _updateStartup = new UpdateStartupNotification(startupResult);
             if (await StartupAsync(e))
@@ -158,17 +159,18 @@ public partial class App : Application
         // Paths
         var appDir = AppContext.BaseDirectory;
         var dataDir = Path.Combine(appDir, "data");
-        var settingsDir = UserDataMigration.Resolve(
-            Environment.GetEnvironmentVariable("HONGXUEASSISTANT_SETTINGS_DIR")
-                ?? Environment.GetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR"),
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
-
         // Initialize file logger as early as possible.
         AppLogger.Initialize(Path.Combine(appDir, "logs"));
         AppLogger.Info("App", $"appDir={appDir}");
 
+        var settingsDir = UserSettingsDirectory.Prepare(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetEnvironmentVariable("HONGXUEASSISTANT_SETTINGS_DIR")
+                ?? Environment.GetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR"));
+
         // Data layer
         var dataStore = new JsonDataStore(dataDir);
+        SearchMatch.LoadFile(Path.Combine(dataDir, "search_keys.json"));
         _settingsManager = new SettingsManager(settingsDir);
         var appearance = await _settingsManager.LoadSidebarAppearanceAsync();
         ThemeManager.Apply(appearance.Theme, appearance.IsNight(appearance.Theme));
@@ -236,7 +238,7 @@ public partial class App : Application
         var enemyVm = new EnemyViewModel();
 
         var operatorVm = new OperatorBrowseViewModel { SelectedOperatorSource = OperatorSourceFilter.Default };
-        operatorVm.LoadOperators(operators.Where(o => o.RequiredStrategyId.Length == 0).ToList());
+        operatorVm.LoadOperators(operators);
         operatorVm.SetBanChecker(banVm.IsBanned);
         operatorVm.SetCovenantBanChecker(banVm.IsCovenantBanned);
 
@@ -302,10 +304,14 @@ public partial class App : Application
             getConnection: () => captureService.Connection)
         {
             TerminalReader = new TerminalLevelReader(ocrEngine),
+            EconomyReader = new ShopEconomyReader(ocrEngine),
             ThemeProvider = () => shopReader.Theme,
             ThemeDetector = new GameShopThemeDetector(Path.Combine(dataDir, "shop_theme_refs.json")),
             AutomaticGameTheme = automaticGameTheme,
+            AutomaticPurchaseTracking = await _settingsManager.LoadAutomaticPurchaseTrackingAsync(),
             BoardRecognizer = boardData is null ? null : new BoardRecognizer(boardData),
+            PurchaseTargets = () => Dispatcher.Invoke(() => (IReadOnlySet<string>)operators.Select(o => o.Name)
+                .Concat(trackingVm.TrackedEquipment.Where(e => !e.IsAcquired).Select(e => e.Name)).ToHashSet(StringComparer.Ordinal)),
         };
 
         _windowTracker = new WindowTrackerService(
@@ -319,10 +325,11 @@ public partial class App : Application
             lineupVm, lineupShareService,
             operators, equipment, strategies, _settingsManager, gameTheme, sidePanelPosition,
             new LineupPlanner(operators, covenantInfos), covenantInfos);
-        shopReader.UseMobileLayout = captureService.Connection.IsAdb;
         sidePanel.GameThemeChanged += theme => shopReader.Theme = theme;
         sidePanel.InitAutomaticGameTheme(automaticGameTheme);
         sidePanel.AutomaticGameThemeChanged += automatic => _ocrScanner.AutomaticGameTheme = automatic;
+        sidePanel.InitAutomaticPurchaseTracking(_ocrScanner.AutomaticPurchaseTracking);
+        sidePanel.AutomaticPurchaseTrackingChanged += enabled => _ocrScanner.AutomaticPurchaseTracking = enabled;
         _ocrScanner.GameThemeDetected += theme => Dispatcher.Invoke(() => sidePanel.ApplyDetectedGameTheme(theme));
         var overlay = _overlay = new OverlayWindow()
         {
@@ -338,16 +345,13 @@ public partial class App : Application
             var connection = captureService.Connection;
             if (connection.IsAdb)
             {
-                var revision = connection.RefreshCaptureRevision();
                 if (scrollDown)
                 {
                     if (!await Task.Run(connection.ScrollInformationPanelDown)) return null;
                     await Task.Delay(250);
                 }
                 if (!ReferenceEquals(connection, captureService.Connection)) return null;
-                var frame = await Task.Run(captureService.CaptureScreen);
-                return ReferenceEquals(connection, captureService.Connection)
-                    && (!scrollDown || connection.RefreshCaptureRevision() == revision) ? frame : null;
+                return await Task.Run(captureService.CaptureScreen);
             }
             var visibility = await Dispatcher.InvokeAsync(() =>
             {
@@ -388,8 +392,7 @@ public partial class App : Application
                         sidePanel.Show();
                         sidePanel.ShowActivated = showActivated;
                     }
-                    if (visibility.Overlay && !sidePanel.IsAssistantHidden && _windowTracker.IsGameFound && !_windowTracker.IsGameMinimized)
-                        overlay.Show();
+                    if (visibility.Overlay) UpdateOverlayPosition(refreshShopItems: false);
                 });
             }
         }
@@ -397,9 +400,9 @@ public partial class App : Application
         _banScreenAnalyzer = new BanScreenAnalyzer(
             () => CaptureInformationScreenAsync(false), ocrEngine, garrisonMode.OcrStrategy,
             enemyRecognizer, operators,
-            coreCovenantNames, additionalCovenantNames,
-            getCaptureRevision: () => captureService.Connection.RefreshCaptureRevision());
+            coreCovenantNames, additionalCovenantNames);
         _banScreenAnalyzer.ScrollInformationPanelAsync = () => CaptureInformationScreenAsync(true);
+        _banScreenAnalyzer.CaptureRevisionProvider = () => captureService.Connection.RefreshCaptureRevision();
         _banScreenAnalyzer.ScrollRequired += message => Dispatcher.BeginInvoke(() =>
             ConfirmDialog.Tell(sidePanel, "请下拉盟约面板", message));
 
@@ -415,8 +418,6 @@ public partial class App : Application
                 var dialog = new GameConnectionWindow(captureService, _settingsManager) { Owner = sidePanel };
                 if (dialog.ShowDialog() == true)
                 {
-                    shopReader.UseMobileLayout = captureService.Connection.IsAdb;
-                    _banScreenAnalyzer.ResetPending();
                     _lastShopItems = [];
                     overlay.UpdateShopItems([]);
                     sidePanel.UpdateGameConnectionStatus(captureService.Connection.IsAdb, captureService.Connection.Status);
@@ -428,27 +429,16 @@ public partial class App : Application
         {
             Interval = TimeSpan.FromSeconds(1),
         };
-        var nextInformationRetry = DateTime.MinValue;
-        _connectionStatusTimer.Tick += async (_, _) =>
-        {
-            sidePanel.UpdateGameConnectionStatus(captureService.Connection.IsAdb, captureService.Connection.Status);
-            if (!_banScreenAnalyzer.HasPendingRead || DateTime.UtcNow < nextInformationRetry) return;
-            var game = captureService.Connection.FindGameWindow();
-            if (game == IntPtr.Zero || Core.Interop.User32.GetForegroundWindow() != game) return;
-            nextInformationRetry = DateTime.UtcNow.AddSeconds(3);
-            await RecordInformationAsync();
-        };
+        _connectionStatusTimer.Tick += (_, _) => sidePanel.UpdateGameConnectionStatus(captureService.Connection.IsAdb, captureService.Connection.Status);
         _connectionStatusTimer.Start();
 
         void UpdateOverlayPosition(bool refreshShopItems)
         {
-            if (!sidePanel.IsLoaded || Dispatcher.HasShutdownStarted) return;
             var foreground = Core.Interop.User32.GetForegroundWindow();
+            sidePanel.UpdateTopmost(_windowTracker.CurrentGameWindowHandle, foreground);
             var panelHandle = new System.Windows.Interop.WindowInteropHelper(sidePanel).Handle;
-            sidePanel.UpdateTopmost(_windowTracker.IsGameFound && !_windowTracker.IsGameMinimized && !sidePanel.IsAssistantHidden
-                ? _windowTracker.CurrentGameWindowHandle : IntPtr.Zero, foreground);
             var viewport = _windowTracker.CurrentViewport;
-            if (sidePanel.IsAssistantHidden || viewport is null || _windowTracker.IsGameMinimized
+            if (viewport is null || _windowTracker.IsGameMinimized
                 || foreground != _windowTracker.CurrentGameWindowHandle && foreground != panelHandle)
             {
                 overlay.Hide();
@@ -460,10 +450,9 @@ public partial class App : Application
             overlay.Show();
         }
 
-        _windowTracker.GameWindowFocusChanged += _ => Dispatcher.Invoke(() => UpdateOverlayPosition(refreshShopItems: true));
-        sidePanel.Deactivated += (_, _) => Dispatcher.BeginInvoke((Action)(() => UpdateOverlayPosition(refreshShopItems: false)));
-
         // Wire window tracker → window positioning
+        sidePanel.Deactivated += (_, _) => Dispatcher.BeginInvoke(() => UpdateOverlayPosition(false));
+        _windowTracker.GameWindowFocusChanged += _ => Dispatcher.Invoke(() => UpdateOverlayPosition(false));
         _windowTracker.GameWindowMoved += rect =>
         {
             Dispatcher.Invoke(() =>
@@ -488,6 +477,7 @@ public partial class App : Application
             Dispatcher.Invoke(() =>
             {
                 _sidePanel.ClearGamePosition();
+                _sidePanel.UpdateTopmost(IntPtr.Zero, Core.Interop.User32.GetForegroundWindow());
                 _overlay.Hide();
             });
         };
@@ -499,6 +489,7 @@ public partial class App : Application
                 if (!_sidePanel.IsAssistantHidden) _sidePanel.SetGameMinimized(minimized);
                 if (minimized)
                 {
+                    _sidePanel.UpdateTopmost(IntPtr.Zero, Core.Interop.User32.GetForegroundWindow());
                     _overlay.Hide();
                     _overlay.UpdateShopItems([]);
                 }
@@ -534,6 +525,11 @@ public partial class App : Application
         var deploy = sidePanel.TrackingView.DeployPage;
         deploy.Initialize(operators.GroupBy(o => o.Name).ToDictionary(g => g.Key, g => g.First()), covenantInfos,
             boardData, trackingVm, _settingsManager, deployState, deployState.ShowInGame);
+        _ocrScanner.PurchasesDetected += (names, captureRevision, runRevision) => Dispatcher.Invoke(() =>
+        {
+            if (captureRevision != captureService.Connection.CaptureRevision || runRevision != _ocrScanner.RunRevision) return;
+            deploy.ApplyRecognizedPurchases(names);
+        });
         void ApplyBoard(BoardMatch? match)
         {
             sidePanel.SetBoardStatus(match?.Map.Name, match?.Camera == Core.Models.BoardCamera.Expanded);
@@ -568,61 +564,14 @@ public partial class App : Application
         }
         _banScreenAnalyzer.EnemyDetected += UpdateEnemyPage;
 
-        _sidePanel.EnemyRecognitionRequested += async () =>
-        {
-            // Both manual enemy scans and full info analyses own this gate, so a
-            // late automatic result cannot overwrite a newer manual scan.
-            if (!_informationScanGate.Wait(0))
-                return;
-            enemyVm.BeginRecognition();
-            sidePanel.UpdateManualScanStatus(1);
-            _ocrScanner.SetBanScreenDetectionPaused(true);
-            try
-            {
-                var source = captureService.Connection;
-                var shot = await CaptureInformationScreenAsync(false);
-                var revision = source.CaptureRevision;
-                if (shot is null)
-                {
-                    enemyVm.RecognitionFailed("未获取到可用画面，请将游戏置前并打开本局信息页后重试。");
-                    return;
-                }
-                int width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(shot.AsSpan(16, 4));
-                int height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(shot.AsSpan(20, 4));
-                var result = await enemyRecognizer.RecognizeAsync(shot, width, height);
-                if (!ReferenceEquals(source, captureService.Connection) || source.RefreshCaptureRevision() != revision)
-                {
-                    enemyVm.RecognitionFailed("游戏屏幕已切换，请在当前页面重试。"); return;
-                }
-                if (result is null)
-                    enemyVm.RecognitionFailed("未找到“敌方领袖”区域，请打开本局信息页并保持右侧敌人信息可见。");
-                else
-                    UpdateEnemyPage(result);
-            }
-            catch (Exception ex)
-            {
-                // UI event boundary: report failures instead of letting async void crash WPF.
-                AppLogger.Error("EnemyRecognition", "Manual enemy recognition failed", ex);
-                enemyVm.RecognitionFailed("本次识别失败，请确认游戏画面可见后重试；详细原因已记录到日志。");
-            }
-            finally
-            {
-                enemyVm.IsRecognizing = false;
-                sidePanel.UpdateManualScanStatus(0);
-                _ocrScanner.SetBanScreenDetectionPaused(false);
-                _informationScanGate.Release();
-            }
-        };
-
         _banScreenAnalyzer.AnalysisBusyChanged += busy =>
         {
             Dispatcher.Invoke(() =>
             {
-                enemyVm.IsBanAnalysisRunning = busy;
                 sidePanel.UpdateManualScanStatus(busy ? 1 : 0);
                 if (busy) { enemyVm.ClearInformationPreview(); enemyVm.BeginRecognition(); }
                 else if (enemyVm.IsRecognizing)
-                    enemyVm.RecognitionFailed("本次未识别到敌人信息，请在本局信息页面使用“识别本局敌人”重试。");
+                    enemyVm.RecognitionFailed("本次未识别到敌人信息，请打开本局信息页后点击“截屏录入”重试。");
                 _ocrScanner?.SetBanScreenDetectionPaused(busy);
                 _sidePanel?.SetBanProcessingMaskVisible(
                     busy,
@@ -638,7 +587,6 @@ public partial class App : Application
         _banScreenAnalyzer.AnalysisFailed += message =>
             Dispatcher.Invoke(() =>
             {
-                if (!_banScreenAnalyzer.HasPendingRead) _ocrScanner.RetryFailedInformationAttempt();
                 enemyVm.RecognitionFailed(message);
                 sidePanel.ShowToast(message);
             });
@@ -655,12 +603,14 @@ public partial class App : Application
             {
                 enemyVm.ClearInformationPreview();
                 banVm.SetCovenantBans(result.CoreCovenants.Concat(result.AdditionalCovenants).Where(c => c.IsBanned).Select(c => c.Name));
-                lineupVm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
                 operatorVm.SetAvailableCovenants(result.CoreCovenants.Concat(result.AdditionalCovenants)
                     .Where(c => !c.IsBanned).Select(c => c.Name));
+                sidePanel.EnableCurrentRunFilters();
                 if (result.EnemyFaction is null)
-                    enemyVm.RecognitionFailed("盟约已录入，本次敌人信息未完整读出，可在敌人页重试。");
-                sidePanel.ShowToast(result.EnemyFaction is null ? "盟约已录入，敌人信息可在敌人页重试" : "本局信息已录入");
+                    enemyVm.RecognitionFailed("盟约已录入，本次敌人信息未完整读出，可点击“截屏录入”重试。");
+                sidePanel.ShowToast(result.EnemyFaction is null ? "盟约已录入，敌人信息可重新截屏录入" : "本局信息已录入");
+                // With saved lineups, the next thing to look at is which of them still work this run.
+                if (sidePanel.LineupVm.Lineups.Count > 0) sidePanel.ShowLineupsSegment(planner: false);
             });
         };
 
@@ -680,7 +630,14 @@ public partial class App : Application
         {
             if (!_ocrScanner.TryStartNewRun(bansChanged)) return;
             _ocrScanner.ResetTerminalLevel();
+            _ocrScanner.ResetRegulationLevel();
+            _ocrScanner.ResetEconomy();
             await Dispatcher.InvokeAsync(deploy.StartNewRunAsync).Task.Unwrap();
+            await Dispatcher.InvokeAsync(() =>
+            {
+                sidePanel.PlannerVm.Strategy = PlannerStrategy.Other;
+                sidePanel.EnableCurrentRunFilters();
+            });
             await _settingsManager.SaveTerminalLevelAsync(0);
             AppLogger.Info("Run", bansChanged ? "Changed Ban set confirmed; progress reset for the new run"
                 : "Opening confirmed; progress reset for the new run");
@@ -705,6 +662,15 @@ public partial class App : Application
             }
         }
         _ocrScanner.BanScreenDetected += async () => await RecordInformationAsync();
+        _ocrScanner.RegulationLevelChanged += () =>
+            Dispatcher.Invoke(() => enemyVm.RegulationLevel = _ocrScanner.RegulationLevel);
+        _ocrScanner.EconomyChanged += _ => Dispatcher.Invoke(() =>
+        {
+            var economy = _ocrScanner.CurrentEconomy;
+            trackingVm.Economy = economy;
+            if (economy is null) enemyVm.CurrentMode = null;
+            if (economy?.Mode is { } mode) enemyVm.CurrentMode = mode;
+        });
         _ocrScanner.TerminalLevelChanged += level =>
         {
             Dispatcher.Invoke(() =>
@@ -731,7 +697,7 @@ public partial class App : Application
         // Manual ban/unban from operator card button.
         _sidePanel.BanToggleRequested += (name, banned) =>
         {
-            banVm.SetManualBan(name, banned);
+            banVm.ToggleBan(name);
         };
 
 
@@ -767,6 +733,7 @@ public partial class App : Application
             if (!sidePanel.IsAssistantHidden) sidePanel.SetGameMinimized(_windowTracker.IsGameMinimized);
             UpdateOverlayPosition(refreshShopItems: true);
         };
+        await _sidePanel.InitRecognitionHotkeyAsync();
         await _sidePanel.InitAssistantHotkeyAsync();
         ShutdownMode = ShutdownMode.OnLastWindowClose;
         _windowTracker.Start();
@@ -794,6 +761,7 @@ public partial class App : Application
         AppLogger.Info("App", "Shutting down");
         _assistantTray?.Dispose();
         _sidePanel?.ReleaseAssistantHotkey();
+        _sidePanel?.ReleaseRecognitionHotkey();
         _ocrScanner?.Dispose();
         _windowTracker?.Dispose();
         _connectionStatusTimer?.Stop();

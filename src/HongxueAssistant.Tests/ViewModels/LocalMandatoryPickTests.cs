@@ -42,7 +42,7 @@ public class LocalMandatoryPickTests
         vm.AddLocked("维3");
         await vm.PendingSearch!;
 
-        if (manual) bans.SetManualBan("炎1", true);
+        if (manual) bans.ToggleBan("炎1");
         else bans.SetBans(["炎1"]);
         await vm.PendingSearch!;
 
@@ -55,7 +55,7 @@ public class LocalMandatoryPickTests
         vm.VisibleLineups.Should().OnlyContain(l =>
             l.Operators.All(o => o.Name != "炎1") && l.Operators.Any(o => o.Name == "维3" && o.IsLocked));
 
-        if (manual) bans.SetManualBan("炎1", false);
+        if (manual) bans.ToggleBan("炎1");
         else bans.SetBans([]);
         await vm.PendingSearch!;
 
@@ -68,24 +68,21 @@ public class LocalMandatoryPickTests
     }
 
     [Fact]
-    public void LockSearchAndTrackingImportSkipBannedOperators()
+    public void UpstreamCanPreselectBannedOperatorsWithoutCountingThemInThisRun()
     {
         var (vm, bans) = Create();
         vm.LockSearchText = "炎";
-        vm.LockSuggestions.Should().Contain(o => o.Name == "炎1");
-
         bans.SetBans(["炎1"]);
-
-        vm.LockSuggestions.Should().NotContain(o => o.Name == "炎1");
-        vm.AddLocked("炎1").Should().BeFalse();
-        vm.LockedOperators.Should().BeEmpty("an exact banned name must not fall back to another suggestion");
-        vm.TrackedOperatorsProvider = () => ["炎1", "维3"];
-        vm.ImportTrackedCommand.Execute(null);
-        vm.LockedOperators.Select(o => o.Name).Should().Equal("维3");
-
-        bans.ClearBans();
         vm.LockSuggestions.Should().Contain(o => o.Name == "炎1");
         vm.AddLocked("炎1").Should().BeTrue();
+        vm.LockedOperators.Should().ContainSingle().Which.IsUnavailable.Should().BeTrue();
+        vm.BuildRequest().LockedOperators.Should().BeEmpty();
+        vm.TrackedOperatorsProvider = () => ["炎1", "维3"];
+        vm.ImportTrackedCommand.Execute(null);
+        vm.LockedOperators.Select(o => o.Name).Should().Equal("炎1", "维3");
+        vm.BuildRequest().LockedOperators.Should().Equal("维3");
+        bans.ClearBans();
+        vm.ActiveLockedCount.Should().Be(2);
     }
 
     [Fact]
@@ -100,8 +97,8 @@ public class LocalMandatoryPickTests
 
         vm.LockedOperators.Select(o => o.Name).Should().Equal("炎1", "炎突", "维3");
         vm.LockedOperators.Single(o => o.Name == "炎1").IsUnavailable.Should().BeTrue();
-        vm.BuildRequest().LockedOperators.Should().BeEquivalentTo("炎突", "维3");
-        vm.ActiveLockedCount.Should().Be(2);
+        vm.BuildRequest().LockedOperators.Should().BeEquivalentTo("维3");
+        vm.ActiveLockedCount.Should().Be(1);
         vm.AddLocked("炎1").Should().BeFalse();
         bans.SetCovenantBans(["炎", "突袭"]);
         vm.LockedOperators.Should().HaveCount(3);
@@ -127,7 +124,7 @@ public class LocalMandatoryPickTests
 
         vm.LockedOperators.Should().ContainSingle().Which.IsUnavailable.Should().BeTrue();
         vm.HasLocked.Should().BeTrue();
-        vm.HasActiveLocked.Should().BeFalse();
+        vm.ActiveLockedCount.Should().Be(0);
         vm.ActiveLockedCount.Should().Be(0);
         activeCountNotified.Should().BeTrue();
         vm.BuildRequest().LockedOperators.Should().BeEmpty();
@@ -135,11 +132,11 @@ public class LocalMandatoryPickTests
         vm.LockedOperators.Should().ContainSingle().Which.IsUnavailable.Should().BeFalse();
         vm.BuildRequest().LockedOperators.Should().Equal("炎1");
         vm.ActiveLockedCount.Should().Be(1);
-        vm.HasActiveLocked.Should().BeTrue();
+        vm.ActiveLockedCount.Should().BeGreaterThan(0);
     }
 
     [Fact]
-    public void SuspendedPicksDoNotConsumeTheActiveLockLimit()
+    public void UpstreamLimitsTheRetainedListWhileBannedPicksDoNotCountInTheRequest()
     {
         var (vm, bans) = Create();
         foreach (var name in Enumerable.Range(1, 6).Select(i => $"炎{i}")
@@ -147,10 +144,10 @@ public class LocalMandatoryPickTests
             vm.AddLocked(name).Should().BeTrue();
         bans.SetBans(["炎1"]);
 
-        vm.AddLocked("维4").Should().BeTrue();
-        vm.LockedOperators.Should().HaveCount(10);
-        vm.ActiveLockedCount.Should().Be(9);
-        vm.BuildRequest().LockedOperators.Should().HaveCount(9).And.NotContain("炎1");
+        vm.AddLocked("维4").Should().BeFalse();
+        vm.LockedOperators.Should().HaveCount(9);
+        vm.ActiveLockedCount.Should().Be(8);
+        vm.BuildRequest().LockedOperators.Should().HaveCount(8).And.NotContain("炎1");
         vm.AddLocked("维5").Should().BeFalse();
     }
 

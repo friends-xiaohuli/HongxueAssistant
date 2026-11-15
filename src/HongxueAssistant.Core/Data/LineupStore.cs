@@ -10,6 +10,7 @@ namespace HongxueAssistant.Core.Data;
 /// </summary>
 public class LineupStore
 {
+    internal const string DeletedIdsFileName = "deleted-lineups.json";
     private readonly string _dir;
     private readonly LineupEquipmentService _equipmentRules;
     private readonly SemaphoreSlim _orderLock = new(1, 1);
@@ -32,7 +33,8 @@ public class LineupStore
             return [];
 
         var files = Directory.EnumerateFiles(_dir, "*.json");
-        var result = new List<Lineup>();
+        var deleted = ReadDeletedIds(_dir);
+        var result = new Dictionary<string, Lineup>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
             Lineup? lineup;
@@ -48,12 +50,14 @@ public class LineupStore
             }
             if (lineup is null) continue;
             if (string.IsNullOrEmpty(lineup.Id)) lineup.Id = Path.GetFileNameWithoutExtension(file);
+            if (deleted.Contains(lineup.Id)) continue;
             if (_equipmentRules.Upgrade(lineup))
             {
                 File.Copy(file, file + $".pre-equipment-{Guid.NewGuid():N}.bak");
                 await WriteAsync(file, lineup);
             }
-            result.Add(lineup);
+            if (!result.TryGetValue(lineup.Id, out var previous) || lineup.UpdatedAt > previous.UpdatedAt)
+                result[lineup.Id] = lineup;
         }
         List<string> order;
         try
@@ -65,10 +69,11 @@ public class LineupStore
         catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             // Existing profiles have no manual order until the first move or new lineup.
-            return [.. result.OrderByDescending(l => l.UpdatedAt)];
+            return [.. result.Values.OrderByDescending(l => l.UpdatedAt)];
         }
-        var ranks = order.Select((id, index) => (id, index)).ToDictionary(pair => pair.id, pair => pair.index);
-        return [.. result.OrderBy(l => ranks.TryGetValue(l.Id, out var index) ? index : int.MaxValue)
+        var ranks = order.Distinct(StringComparer.OrdinalIgnoreCase).Select((id, index) => (id, index))
+            .ToDictionary(pair => pair.id, pair => pair.index, StringComparer.OrdinalIgnoreCase);
+        return [.. result.Values.OrderBy(l => ranks.TryGetValue(l.Id, out var index) ? index : int.MaxValue)
             .ThenByDescending(l => l.UpdatedAt)];
     }
 
@@ -101,10 +106,15 @@ public class LineupStore
             lineup.Id = Guid.NewGuid().ToString("N");
         lineup.UpdatedAt = DateTime.UtcNow;
 
-        var path = Path.GetFullPath(Path.Combine(_dir, $"{lineup.Id}.json"));
-        if (Path.GetDirectoryName(path) != Path.GetFullPath(_dir))
-            throw new InvalidDataException("阵容 ID 不能包含目录路径");
-        await WriteAsync(path, lineup);
+        var path = PathForId(_dir, lineup.Id);
+        await _orderLock.WaitAsync();
+        try
+        {
+            await WriteAsync(path, lineup);
+            var deleted = ReadDeletedIds(_dir);
+            if (deleted.Remove(lineup.Id)) await WriteDeletedIdsAsync(deleted);
+        }
+        finally { _orderLock.Release(); }
     }
 
     private static async Task WriteAsync(string path, Lineup lineup)
@@ -118,11 +128,56 @@ public class LineupStore
         finally { File.Delete(temporary); }
     }
 
-    public Task DeleteAsync(string id)
+    internal static string PathForId(string directory, string id)
     {
-        var path = Path.Combine(_dir, $"{id}.json");
-        if (File.Exists(path))
+        if (string.IsNullOrWhiteSpace(id) || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new InvalidDataException("阵容 ID 不能包含目录路径或无效文件名字符");
+        return Path.GetFullPath(Path.Combine(directory, $"{id}.json"));
+    }
+
+    internal static HashSet<string> ReadDeletedIds(string directory)
+    {
+        string json;
+        try { json = File.ReadAllText(Path.Combine(directory, "order", DeletedIdsFileName)); }
+        catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new(StringComparer.OrdinalIgnoreCase);
+        }
+        var ids = JsonSerializer.Deserialize<List<string>>(json)
+            ?? throw new JsonException("阵容删除记录不能为空");
+        foreach (var id in ids) PathForId(directory, id);
+        return ids.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task WriteDeletedIdsAsync(HashSet<string> ids)
+    {
+        var directory = Path.Combine(_dir, "order");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, DeletedIdsFileName);
+        var temporary = path + $".{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(ids.Order(StringComparer.OrdinalIgnoreCase), JsonOptions));
+            try { File.Copy(path, path + ".bak", true); }
+            catch (FileNotFoundException) { /* First deletion has no earlier record. */ }
+            File.Move(temporary, path, true);
+        }
+        finally { File.Delete(temporary); }
+    }
+
+    public async Task DeleteAsync(string id)
+    {
+        var path = PathForId(_dir, id);
+        await _orderLock.WaitAsync();
+        try
+        {
+            Directory.CreateDirectory(_dir);
+            try { File.Copy(path, path + ".deleted.bak", true); }
+            catch (FileNotFoundException) { /* A repeated deletion must still suppress the legacy copy. */ }
+            var deleted = ReadDeletedIds(_dir);
+            if (deleted.Add(id)) await WriteDeletedIdsAsync(deleted);
             File.Delete(path);
-        return Task.CompletedTask;
+        }
+        finally { _orderLock.Release(); }
     }
 }

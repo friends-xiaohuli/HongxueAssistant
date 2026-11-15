@@ -33,7 +33,7 @@ public class UserDataMigrationTests
         var root = Directory.CreateTempSubdirectory("hongxue-override-").FullName;
         try
         {
-            UserDataMigration.Resolve("isolated-test-settings", root).Should().Be("isolated-test-settings");
+            UserDataMigration.Resolve("isolated-test-settings", root).Should().Be(Path.GetFullPath("isolated-test-settings"));
             Directory.GetFileSystemEntries(root).Should().BeEmpty();
         }
         finally { Directory.Delete(root, true); }

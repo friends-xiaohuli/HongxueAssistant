@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using HongxueAssistant.Core.Data;
 using HongxueAssistant.Core.Services;
 using FluentAssertions;
 using Xunit.Abstractions;
@@ -231,6 +232,12 @@ public class UpdateScriptExecutionTests(ITestOutputHelper output) : IAsyncLifeti
                     }
                     File.WriteAllText(Path.Combine(root, "started.log"),
                         File.ReadAllText(Path.Combine(root, "version.txt")) + "|" + Environment.CurrentDirectory);
+                    if (Environment.GetEnvironmentVariable("HONGXUE_TEST_READ_SETTINGS") == "1") {
+                        var profile = Environment.GetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR");
+                        File.WriteAllText(Path.Combine(root, "started-settings.log"), profile + "|" +
+                            File.ReadAllText(Path.Combine(profile, "tracking.json")) + "|" +
+                            File.ReadAllText(Path.Combine(profile, "lineups", "order", "lineups.json")));
+                    }
                     if (File.ReadAllText(Path.Combine(root, "version.txt")) == "new") {
                         var modePath = Path.Combine(root, "startup-mode.txt");
                         var mode = File.Exists(modePath) ? File.ReadAllText(modePath) : "ready";
@@ -266,6 +273,40 @@ public class UpdateScriptExecutionTests(ITestOutputHelper output) : IAsyncLifeti
         await File.WriteAllTextAsync(Path.Combine(source, "version.txt"), "new");
         await File.WriteAllTextAsync(Path.Combine(source, "new-only.txt"), "new");
         return (app, source);
+    }
+
+    [Fact]
+    public async Task Update_PreservesMigratedProfileAndRestartsWithSameSettingsDirectory()
+    {
+        var appData = Path.Combine(_root, "appdata");
+        var legacy = Directory.CreateDirectory(Path.Combine(appData, "HongxueAssistant")).FullName;
+        Directory.CreateDirectory(Path.Combine(legacy, "lineups", "order"));
+        await File.WriteAllTextAsync(Path.Combine(legacy, "tracking.json"), "[]");
+        await File.WriteAllTextAsync(Path.Combine(legacy, "lineups", "order", "lineups.json"), "[\"saved\"]");
+        await File.WriteAllTextAsync(Path.Combine(legacy, "lineups", "saved.json"), "{\"id\":\"saved\",\"name\":\"保留阵容\"}");
+        var profile = UserSettingsDirectory.Prepare(appData, null);
+        var before = Directory.GetFiles(profile, "*", SearchOption.AllDirectories)
+            .ToDictionary(path => Path.GetRelativePath(profile, path), File.ReadAllText);
+        var (app, source) = await PrepareFilesAsync(_root, "profile-update");
+        var originalSettings = Environment.GetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR");
+        var originalProbe = Environment.GetEnvironmentVariable("HONGXUE_TEST_READ_SETTINGS");
+        try
+        {
+            Environment.SetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR", profile);
+            Environment.SetEnvironmentVariable("HONGXUE_TEST_READ_SETTINGS", "1");
+            var result = await RunUpdateAsync(_root, app, source);
+            result.ExitCode.Should().Be(0, result.Output);
+            (await File.ReadAllTextAsync(Path.Combine(app, "started-settings.log")))
+                .Should().Be(profile + "|[]|[\"saved\"]");
+            Directory.GetFiles(profile, "*", SearchOption.AllDirectories)
+                .ToDictionary(path => Path.GetRelativePath(profile, path), File.ReadAllText).Should().BeEquivalentTo(before);
+            Directory.Exists(legacy).Should().BeTrue();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ASPASSISTANT_SETTINGS_DIR", originalSettings);
+            Environment.SetEnvironmentVariable("HONGXUE_TEST_READ_SETTINGS", originalProbe);
+        }
     }
 
     private static async Task<(int ExitCode, string Output)> RunUpdateAsync(

@@ -40,7 +40,7 @@ public class AcquiredTrackingTests
         vm.TrackLineup(new Lineup { Slots = [new() { OperatorName = "角峰", IsElite = targetElite, Equipments = ["盾牌"] }] });
         vm.SetDeployPool(state);
         vm.IsTracked("角峰").Should().BeFalse();
-        vm.TrackedEquipment.Should().BeEmpty();
+        vm.TrackedEquipment.Should().ContainSingle().Which.Name.Should().Be("盾牌");
         state.SetElite("角峰", false);
         vm.SyncDeployPool();
         vm.IsTracked("角峰").Should().Be(targetElite);
@@ -117,7 +117,7 @@ public class AcquiredTrackingTests
     }
 
     [Fact]
-    public void AcquiringOperatorRetainsRecordAndRecalculatesOnlyAutomaticRequirements()
+    public void AcquiringOperatorRetainsRecordAndPendingEquipmentRequirements()
     {
         var vm = new TrackingViewModel();
         vm.TrackLineup(new Lineup { Slots = [
@@ -137,7 +137,7 @@ public class AcquiredTrackingTests
         acquired.Equipments.Should().Equal("独占装备", "共享装备", "手动装备");
         vm.IsTracked("角峰").Should().BeFalse();
         vm.IsTracked("隐现").Should().BeTrue();
-        vm.TrackedEquipment.Select(e => e.Name).Should().BeEquivalentTo("共享装备", "手动装备");
+        vm.TrackedEquipment.Select(e => e.Name).Should().BeEquivalentTo("独占装备", "共享装备", "手动装备");
         notifications.Should().Be(1, "the existing save and overlay subscriptions need a collection notification");
 
         vm.AddTracking("角峰", TrackingType.Operator);

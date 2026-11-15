@@ -57,7 +57,10 @@ public sealed class EnemyRecognizer(IOcrEngine ocr, IOcrStrategy ocrStrategy, Bo
         string boss = string.Concat(bossLines);
         if (bossData.TryMatchBossFromOcr(bossLines, out var matched))
             boss = matched;
-        var result = new EnemyResult(boss, types.Distinct(StringComparer.Ordinal).ToList(), lines);
+        var result = new EnemyResult(boss, types.Distinct(StringComparer.Ordinal).ToList(), lines)
+        {
+            RegulationLevel = await new RegulationLevelReader(ocr).ReadAsync(screenshot, imgWidth, imgHeight)
+        };
         AppLogger.Info("EnemyRecognizer", $"Boss='{result.BossName}' types=[{string.Join(", ", result.EnemyTypes)}]");
         return result;
     }

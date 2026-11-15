@@ -1,3 +1,4 @@
+// Modified for HongxueAssistant on 2026-11-16; see NOTICE.
 // Modified for ASP Assistant Regulation on 2026-11-09; see NOTICE.
 using HongxueAssistant.Core.GameModes;
 using HongxueAssistant.Core.Models;
@@ -70,7 +71,12 @@ public sealed class BanScreenAnalyzer
     // Re-entry guard: only one analysis can run at a time.
     private int _running;
     private readonly InformationReadSession _readSession = new();
-    private readonly Func<long>? _getCaptureRevision;
+    private Func<long>? _getCaptureRevision;
+    public Func<long> CaptureRevisionProvider
+    {
+        get => _getCaptureRevision ?? (() => 0);
+        set => _getCaptureRevision = value;
+    }
     private long? _lastCaptureRevision;
     public bool HasPendingRead => _readSession.IsPending;
     public void ResetPending() { _readSession.Reset(); _lastShotHash = null; }
@@ -139,7 +145,11 @@ public sealed class BanScreenAnalyzer
             {
                 AppLogger.Info("BanAnalyzer", "Identical screenshot, reusing the previous analysis");
                 if (PrepareNewRunAsync is { } cachedPrepare && await _informationDetector.IsOpeningScreenAsync(shot, rawWidth, rawHeight))
+                {
+                    if (_getCaptureRevision is not null && captureRevision != _getCaptureRevision()) return;
                     await cachedPrepare(false);
+                }
+                if (_getCaptureRevision is not null && captureRevision != _getCaptureRevision()) return;
                 AutoBanListComputed?.Invoke(_lastAutoBans ?? []);
                 if (_lastEnemy is not null) EnemyDetected?.Invoke(_lastEnemy);
                 AnalysisCompleted?.Invoke(_lastResult);
@@ -344,9 +354,8 @@ public sealed class BanScreenAnalyzer
             if (string.IsNullOrWhiteSpace(op.Name))
                 continue;
 
-            // Same rule as the planner: unavailable only when every covenant of the operator is banned.
-            if (result.SelectsCoreGroup && op.CoreCovenants.Any(bannedCoreCovenants.Contains)
-                || CovenantBanRules.IsExcluded(op.CoreCovenants, op.AdditionalCovenants, bannedCovenants))
+            // Share the upstream core-first rule with the planner and the run-information page.
+            if (CovenantBanRules.IsExcluded(op, bannedCovenants))
                 autoBannedOperators.Add(op.Name);
         }
 

@@ -14,17 +14,18 @@ namespace HongxueAssistant.Core.Services;
 public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogNames)
 {
     private readonly string[] _names = catalogNames.OrderByDescending(n => n.Length).ToArray();
-    public bool UseMobileLayout { get; set; }
-    private readonly MobileShopReader _mobile = new(engine, catalogNames);
     private volatile GameShopTheme _theme = GameShopTheme.Terminal;
     public GameShopTheme Theme { get => _theme; set => _theme = value; }
+    public bool IsShopOpen { get; private set; }
+    private (double X, double Y, double Width, double Height) _controlRegion;
+    private (double Left, double Width)[] _cardSlots = [];
 
     public async Task<IReadOnlyList<ShopItem>> ReadAsync(
         byte[] screenshot, int width, int height, IReadOnlyList<string> trackedNames)
     {
+        IsShopOpen = false;
         if (trackedNames.Count == 0)
             return [];
-        var originalWidth = width; var originalHeight = height;
         var theme = Theme;
 
         using var stream = new MemoryStream(screenshot);
@@ -68,6 +69,9 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
         }
         if (control is null)
             return [];
+        _controlRegion = (control.Box.X / (2.0 * width), (canvasTop + control.Box.Y / 2.0) / height,
+            control.Box.W / (2.0 * width), control.Box.H / (2.0 * height));
+        IsShopOpen = true;
 
         // Anchor the name line to actual text, or to the adjacent shop control
         // when freezing has hidden every catalogue name from the first pass.
@@ -79,6 +83,9 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
         var heights = items.Select(i => i.OcrRegion.Height * height * 2).Order().ToArray();
         double nameCenter = centers.Length == 0 ? control.Box.Y + control.Box.H * 1.1 : centers[centers.Length / 2];
         double textHeight = heights.Length == 0 ? control.Box.H * .8 : heights[heights.Length / 2];
+        bool IsOnNameRow(ShopItem item) => Math.Abs((item.OcrRegion.Y * height - canvasTop
+            + item.OcrRegion.Height * height / 2) * 2 - nameCenter) <= textHeight * .65;
+        items.RemoveAll(item => !IsOnNameRow(item));
         int nameTop = Math.Max(0, (int)(nameCenter - textHeight * .65));
         int nameHeight = Math.Min(strip.Height - nameTop, (int)Math.Ceiling(textHeight * 1.3));
         // Repeated vertical card edges provide the pitch at the current UI size.
@@ -123,6 +130,22 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
             }
             pitch *= width / (double)source.Width;
         }
+        _cardSlots = cardLefts.Select(left => (left / (double)width, pitch / width)).ToArray();
+        bool complete = cardLefts.Count > 0;
+        int covered = 0;
+        foreach (var left in cardLefts)
+        {
+            int count = items.Count(i => (i.OcrRegion.X + i.OcrRegion.Width / 2) * width >= left
+                && (i.OcrRegion.X + i.OcrRegion.Width / 2) * width < left + pitch);
+            covered += count;
+            if (count > 1 || count == 0 && !ShopPurchaseDetector.IsEmpty(source,
+                new ShopItem { OcrRegion = ((left + pitch * .14) / width, 0, 0, 0) }))
+            {
+                complete = false;
+                break;
+            }
+        }
+        if (complete && covered == items.Count) return FinishItems(items, trackedNames);
         if (items.Count == 0 && cardLefts.Count > 0 && theme != GameShopTheme.Closure)
         {
             // Frozen names can all disappear. Their band still has a fixed
@@ -130,6 +153,8 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
             nameTop = (int)Math.Round((height - canvasTop) * 2
                 - pitch * (theme == GameShopTheme.Terminal ? .56 : .673));
             nameHeight = (int)Math.Round(pitch * (theme == GameShopTheme.Terminal ? .236 : .273));
+            nameCenter = nameTop + nameHeight / 2.0;
+            textHeight = nameHeight;
         }
         using (var original = (Bitmap)strip.Clone())
         using (var graphics = Graphics.FromImage(strip))
@@ -160,7 +185,7 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
         var mapped = recovered.Select(t => t.Box.Y + t.Box.H / 2.0 < nameTop
             ? t with { Box = (t.Box.X, t.Box.Y + nameTop
                 - (t.Box.Y + t.Box.H / 2.0 < 170 ? 60 : 200), t.Box.W, t.Box.H) } : t).ToList();
-        foreach (var item in MatchNames(mapped, width, height, canvasTop, _names))
+        foreach (var item in MatchNames(mapped, width, height, canvasTop, _names).Where(IsOnNameRow))
         {
             // The two OCR passes can leave a few pixels between boxes for the same label.
             if (items.Any(i => i.Name == item.Name
@@ -186,13 +211,18 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
                         nameTop, lineWidth, nameHeight);
                     var matches = MatchNames(lines.Select(t => new OcrTextResult(
                         t.Text.Replace("斯卡菜", "斯卡蒂").Replace("复泰", "复奏"),
-                        (lineLeft, nameTop, lineWidth, nameHeight))).ToList(), width, height, canvasTop, _names);
+                        (lineLeft, nameTop, lineWidth, nameHeight))).ToList(), width, height, canvasTop, _names).Where(IsOnNameRow).ToList();
                     if (matches.Count == 0) continue;
                     items.AddRange(matches);
                     break;
                 }
             }
         }
+        return FinishItems(items, trackedNames);
+    }
+
+    private static IReadOnlyList<ShopItem> FinishItems(List<ShopItem> items, IReadOnlyList<string> trackedNames)
+    {
         var occurrences = new Dictionary<string, int>();
         items.Sort((a, b) => a.OcrRegion.X.CompareTo(b.OcrRegion.X));
         foreach (var item in items)
@@ -201,12 +231,75 @@ public sealed class ShopReader(IOcrEngine engine, IReadOnlyList<string> catalogN
             item.Id = $"{item.Name}@{occurrence}";
             occurrences[item.Name] = occurrence + 1;
         }
-        if (items.Count == 0 && UseMobileLayout)
-        {
-            _mobile.Theme = theme; _mobile.UseMobileLayout = true;
-            return await _mobile.ReadAsync(screenshot, originalWidth, originalHeight, trackedNames);
-        }
         return items.Where(i => trackedNames.Contains(i.Name)).ToList();
+    }
+
+    /// <summary>Verify a candidate on a new frame without recognizing the whole shop again.</summary>
+    public async Task<bool> IsSameOpenShopAsync(byte[] before, byte[] after, IReadOnlyList<ShopItem> remaining)
+    {
+        // A refresh can momentarily empty the whole shop; require a surviving named card.
+        if (!IsShopOpen || remaining.Count == 0) return false;
+        using var beforeStream = new MemoryStream(before);
+        using var previous = new Bitmap(beforeStream);
+        using var afterStream = new MemoryStream(after);
+        using var current = new Bitmap(afterStream);
+        if (previous.Size != current.Size) return false;
+        var changed = new List<ShopItem>();
+        foreach (var card in remaining)
+        {
+            // Include the next glyph: a refresh may replace a name with a longer name sharing its prefix.
+            int padding = (int)Math.Ceiling(card.OcrRegion.Height * current.Height);
+            int left = Math.Max(0, (int)(card.OcrRegion.X * current.Width) - padding);
+            int top = Math.Max(0, (int)(card.OcrRegion.Y * current.Height) - 2);
+            int right = Math.Min(current.Width, (int)Math.Ceiling((card.OcrRegion.X + card.OcrRegion.Width) * current.Width) + padding);
+            int bottom = Math.Min(current.Height, (int)Math.Ceiling((card.OcrRegion.Y + card.OcrRegion.Height) * current.Height) + 2);
+            bool same = true;
+            for (int y = top; y < bottom && same; y++)
+                for (int x = left; x < right; x++)
+                    if (previous.GetPixel(x, y) != current.GetPixel(x, y)) { same = false; break; }
+            if (!same) changed.Add(card);
+        }
+        if (changed.Count > 0 && _cardSlots.Length == 0) return false;
+        var bounds = Rectangle.FromLTRB((int)(_controlRegion.X * current.Width), (int)(_controlRegion.Y * current.Height),
+            (int)Math.Ceiling((_controlRegion.X + _controlRegion.Width) * current.Width),
+            (int)Math.Ceiling((_controlRegion.Y + _controlRegion.Height) * current.Height));
+        var control = await ReadPatchLineAsync(current, bounds, false);
+        if (!control.Any(t => t.Text.Contains("收起", StringComparison.Ordinal))) return false;
+        foreach (var card in changed)
+        {
+            var center = card.OcrRegion.X + card.OcrRegion.Width / 2;
+            var slot = _cardSlots.FirstOrDefault(s => center >= s.Left && center < s.Left + s.Width);
+            if (slot.Width == 0) return false;
+            var nameBounds = Rectangle.FromLTRB(Math.Max((int)((slot.Left + slot.Width * .1) * current.Width),
+                    (int)(card.OcrRegion.X * current.Width) - 3),
+                Math.Max(0, (int)(card.OcrRegion.Y * current.Height) - 3),
+                Math.Min(current.Width, (int)Math.Ceiling((slot.Left + slot.Width * .96) * current.Width)),
+                Math.Min(current.Height, (int)Math.Ceiling((card.OcrRegion.Y + card.OcrRegion.Height) * current.Height) + 3));
+            var texts = await ReadPatchLineAsync(current, nameBounds, true);
+            var names = MatchNames(texts, nameBounds.Width * 2, nameBounds.Height * 2, 0, _names);
+            if (names.Count != 1 || names[0].Name != card.Name) return false;
+        }
+        return true;
+    }
+
+    private async Task<IReadOnlyList<OcrTextResult>> ReadPatchLineAsync(Bitmap frame, Rectangle bounds, bool name)
+    {
+        using var patch = new Bitmap(bounds.Width * 2, bounds.Height * 2);
+        using (var graphics = Graphics.FromImage(patch))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            if (name && Theme != GameShopTheme.Closure)
+            {
+                using var attributes = new ImageAttributes();
+                float offset = Theme == GameShopTheme.Terminal ? -1.3f : -1.72f;
+                attributes.SetColorMatrix(new ColorMatrix([
+                    [5, 5, 5, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+                    [0, 0, 0, 1, 0], [offset, offset, offset, 0, 1]]));
+                graphics.DrawImage(frame, new Rectangle(0, 0, patch.Width, patch.Height), bounds.X, bounds.Y, bounds.Width, bounds.Height, GraphicsUnit.Pixel, attributes);
+            }
+            else graphics.DrawImage(frame, new Rectangle(0, 0, patch.Width, patch.Height), bounds, GraphicsUnit.Pixel);
+        }
+        return await engine.RecognizeLineAsync(ImageBytes.Encode(patch), 0, 0, patch.Width, patch.Height);
     }
 
     public IReadOnlyList<ShopItem> Match(IReadOnlyList<OcrTextResult> texts,

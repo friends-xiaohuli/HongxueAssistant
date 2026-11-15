@@ -48,8 +48,9 @@ public sealed class GameShopThemeDetector
         {
             graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            int left = (int)(image.Width - image.Width * 0.12 * scale);
-            int top = (int)(image.Height - image.Height * 0.3 * scale);
+            double s = Math.Min(image.Width / 1920.0, image.Height / 1080.0);
+            int left = image.Width - (int)(1920 * s * 0.12 * scale);
+            int top = image.Height - (int)(1080 * s * 0.3 * scale);
             graphics.DrawImage(image, new Rectangle(0, 0, 24, 40), left, top,
                 image.Width - left, image.Height - top, GraphicsUnit.Pixel);
         }

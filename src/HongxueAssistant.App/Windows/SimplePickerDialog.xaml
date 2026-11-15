@@ -66,7 +66,7 @@
                             <Setter.Value>
                                 <ToolTip DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}" Padding="10,8">
                                     <TextBlock Text="{Binding Summary}" Width="300" MaxHeight="240" TextWrapping="Wrap"
-                                               FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                               FontSize="12" />
                                 </ToolTip>
                             </Setter.Value>
                         </Setter>

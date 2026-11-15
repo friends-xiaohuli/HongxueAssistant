@@ -24,7 +24,7 @@ public partial class GameConnectionWindow : Window
     private readonly SettingsManager _settings;
     private bool _busy;
     private bool _loading = true;
-    private int _screenRequest;
+    private bool _manualEdited;
     /// <summary>An ADB connection that passed the test for the current fields.</summary>
     private GameConnectionService? _tested;
 
@@ -32,11 +32,12 @@ public partial class GameConnectionWindow : Window
     {
         public string Name => Device.Name;
         public string Serial => Device.AdbSerial;
+        public EmulatorKind Kind => EmulatorDiscovery.Kind(Device.Name, Device.AdbPath);
     }
 
     private sealed record WindowChoice(DesktopWindowInfo Window)
     {
-        public string Label => $"{Window.Name} · 0x{Window.Handle.ToInt64():X}";
+        public string Label => $"{(GameConnectionService.GetWindowKind(Window.Handle) == EmulatorKind.LDPlayer ? "雷电" : "MuMu")} · {Window.Name}";
     }
 
     public GameConnectionWindow(ScreenCaptureService capture, SettingsManager settings)
@@ -47,7 +48,7 @@ public partial class GameConnectionWindow : Window
         var saved = capture.Connection.Settings;
         AdbPathBox.Text = saved.AdbPath;
         AdbSerialBox.Text = saved.AdbSerial;
-        FollowFocusedScreen.IsChecked = saved.FollowFocusedGame;
+        FollowFocusedGameToggle.IsChecked = saved.FollowFocusedGame;
         // A saved manual address is only visible in the manual section, so open it.
         ManualToggle.IsChecked = !string.IsNullOrWhiteSpace(saved.AdbSerial);
         RefreshWindows();
@@ -57,7 +58,6 @@ public partial class GameConnectionWindow : Window
         UpdateMode();
         if (capture.Connection.IsAdb) SetStatus(Tone.Neutral, "当前连接", capture.Connection.Status);
         Closing += (_, e) => e.Cancel = _busy;
-        if (capture.Connection.IsAdb) _ = RefreshScreensAsync();
         Closed += (_, _) => { if (DialogResult != true) _tested?.Dispose(); };
     }
 
@@ -133,49 +133,73 @@ public partial class GameConnectionWindow : Window
         UpdateMode();
     }
 
-    private void OnInputChanged(object sender, RoutedEventArgs e) => InvalidateTest();
+    private void OnInputChanged(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        InvalidateTest();
+        if (sender == AdbPathBox || sender == AdbSerialBox)
+        {
+            _manualEdited = true;
+            DisplaySelector.ItemsSource = null;
+            RefreshWindows(reset: true);
+        }
+    }
 
     private void OnManualToggled(object sender, RoutedEventArgs e)
         => ManualPanel.Visibility = ManualToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
 
     private async void OnDiscover(object sender, RoutedEventArgs e)
     {
-        DiscoverButton.IsEnabled = false;
+        InvalidateTest();
+        SetBusy(true);
         SetStatus(Tone.Busy, "正在查找 ADB 设备…", "");
         try
         {
             var path = AdbPathBox.Text.Trim();
             var devices = await Task.Run(() =>
             {
-                using var found = MaaToolkit.Shared.AdbDevice.Find(File.Exists(path) ? path : "");
-                return found.Select(d => new AdbDeviceInfo(d.Name, d.AdbPath, d.AdbSerial,
-                    d.ScreencapMethods, d.InputMethods, d.Config, d.AgentPath)).ToList();
+                return EmulatorDiscovery.FindDevices(path);
             });
             var choices = devices.Select(d => new DeviceChoice(d)).ToList();
+            _loading = true;
             DeviceSelector.ItemsSource = choices;
             NoDevicesText.Visibility = choices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             NoDevicesText.Text = "没有发现设备。确认模拟器已启动，或在下方手动填写路径和地址。";
             DeviceSelector.SelectedItem = choices.FirstOrDefault(c => c.Serial == AdbSerialBox.Text.Trim())
                 ?? (choices.Count == 1 ? choices[0] : null);
+            _loading = false;
             if (choices.Count == 0)
             {
                 ManualToggle.IsChecked = true;
-                SetStatus(Tone.Error, "没有发现设备", "确认 MuMu 已启动，再点「发现设备」；也可以手动填写 ADB 路径和地址。");
+                SetStatus(Tone.Error, "没有发现设备", "确认模拟器已启动，再点「发现设备」；也可以手动填写 ADB 路径和地址。");
             }
             else SetStatus(Tone.Neutral, $"发现 {choices.Count} 个实例", "选中正在运行游戏的那个，再选对应的游戏窗口。");
             RefreshWindows();
         }
-        catch (Exception ex) { SetStatus(Tone.Error, "查找设备失败", ex.Message); }
-        finally { DiscoverButton.IsEnabled = true; }
+        catch (Exception ex) { SetStatus(Tone.Error, "查找设备失败", ex.Message); return; }
+        finally { _loading = false; SetBusy(false); }
+        if (DeviceSelector.SelectedItem is DeviceChoice selected) await UseDeviceAsync(selected);
     }
 
     private async void OnDeviceSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (DeviceSelector.SelectedItem is not DeviceChoice choice) return;
+        if (_loading || _busy || DeviceSelector.SelectedItem is not DeviceChoice choice) return;
+        await UseDeviceAsync(choice);
+    }
+
+    private async Task UseDeviceAsync(DeviceChoice choice)
+    {
+        InvalidateTest();
+        _loading = true;
         AdbPathBox.Text = choice.Device.AdbPath;
         AdbSerialBox.Text = choice.Device.AdbSerial;
         AdbMode.IsChecked = true;
-        await RefreshScreensAsync();
+        DisplaySelector.ItemsSource = null;
+        _manualEdited = false;
+        _loading = false;
+        UpdateMode();
+        RefreshWindows(reset: true);
+        await RefreshDisplaysAsync();
     }
 
     private void OnBrowseAdb(object sender, RoutedEventArgs e)
@@ -186,58 +210,66 @@ public partial class GameConnectionWindow : Window
 
     private void OnRefreshWindows(object sender, RoutedEventArgs e) => RefreshWindows();
 
-    private void RefreshWindows()
+    private void RefreshWindows(bool reset = false)
     {
-        var previous = (WindowSelector.SelectedItem as WindowChoice)?.Window.Handle
+        var previous = reset ? IntPtr.Zero : (WindowSelector.SelectedItem as WindowChoice)?.Window.Handle
             ?? _capture.Connection.FindGameWindow();
-        var choices = GameConnectionService.FindMuMuWindows().Select(w => new WindowChoice(w)).ToList();
+        var device = DeviceSelector.SelectedItem as DeviceChoice;
+        var kind = !_manualEdited && device is not null ? device.Kind
+            : !_manualEdited ? _capture.Connection.Settings.Emulator : EmulatorKind.Unknown;
+        var choices = GameConnectionService.FindGameWindows()
+            .Where(w => kind == EmulatorKind.Unknown || GameConnectionService.GetWindowKind(w.Handle) == kind)
+            .Select(w => new WindowChoice(w)).ToList();
         WindowSelector.ItemsSource = choices;
         WindowSelector.SelectedItem = choices.FirstOrDefault(w => w.Window.Handle == previous);
+        if (WindowSelector.SelectedItem is null && device is not null)
+        {
+            var named = choices.Where(w => device.Name.StartsWith(w.Window.Name + "-", StringComparison.Ordinal)).ToList();
+            if (named.Count == 1) WindowSelector.SelectedItem = named[0];
+        }
         if (WindowSelector.SelectedItem is null && choices.Count == 1) WindowSelector.SelectedIndex = 0;
     }
 
-    private void OnFollowChanged(object sender, RoutedEventArgs e)
+    private async void OnRefreshDisplays(object sender, RoutedEventArgs e) => await RefreshDisplaysAsync();
+
+    private async Task RefreshDisplaysAsync()
     {
-        if (ScreenSelector is null) return;
-        ScreenSelector.IsEnabled = FollowFocusedScreen.IsChecked != true;
         InvalidateTest();
-    }
-
-    private async void OnRefreshScreens(object sender, RoutedEventArgs e) => await RefreshScreensAsync();
-
-    private async Task RefreshScreensAsync()
-    {
-        var request = ++_screenRequest;
-        var path = AdbPathBox.Text.Trim();
-        var serial = AdbSerialBox.Text.Trim();
-        if (!File.Exists(path) || string.IsNullOrWhiteSpace(serial)) return;
-        SetStatus(Tone.Busy, "正在读取游戏屏幕…", "");
+        var previous = DisplaySelector.SelectedItem as AdbGameDisplay;
+        var settings = NewSettings(true, (WindowSelector.SelectedItem as WindowChoice)?.Window);
+        SetBusy(true);
+        SetStatus(Tone.Busy, "正在查找明日方舟屏幕…", "");
         try
         {
-            var screens = await Task.Run(() => new AdbGameScreenSource().FindDisplays(path, serial));
-            if (request != _screenRequest || AdbPathBox.Text.Trim() != path || AdbSerialBox.Text.Trim() != serial) return;
-            var saved = _capture.Connection.Settings;
-            ScreenSelector.ItemsSource = screens;
-            ScreenSelector.SelectedItem = FollowFocusedScreen.IsChecked == true
-                ? screens.FirstOrDefault(s => s.IsFocused) ?? screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName)
-                : screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName && s.DisplayId == saved.AndroidDisplayId)
-                    ?? screens.FirstOrDefault(s => s.PackageName == saved.AndroidPackageName);
-            if (ScreenSelector.SelectedItem is null && screens.Count == 1) ScreenSelector.SelectedIndex = 0;
-            SetStatus(Tone.Neutral, "游戏屏幕", screens.Count == 0 ? "未发现运行中的明日方舟，请先打开游戏。" : "已读取官服 / B服屏幕，测试截图后应用。");
+            var displays = await Task.Run(() => AdbGameScreens.Find(settings));
+            _loading = true;
+            DisplaySelector.ItemsSource = displays;
+            DisplaySelector.SelectedItem = displays.FirstOrDefault(d => previous is not null && d.DisplayId == previous.DisplayId && d.PackageName == previous.PackageName)
+                ?? displays.FirstOrDefault(d => d.IsFocused)
+                ?? (displays.Count == 1 ? displays[0] : null);
+            _loading = false;
+            SetStatus(displays.Count == 0 ? Tone.Error : Tone.Neutral,
+                displays.Count == 0 ? "未找到游戏屏幕" : $"发现 {displays.Count} 个游戏屏幕",
+                displays.Count == 0 ? "请在所选模拟器打开明日方舟官服或B服，再刷新屏幕。" : "确认游戏窗口和屏幕后，测试画面再应用。");
         }
-        catch (Exception ex) { if (request == _screenRequest) SetStatus(Tone.Error, "读取屏幕失败", ex.Message); }
+        catch (Exception ex) { DisplaySelector.ItemsSource = null; SetStatus(Tone.Error, "查找屏幕失败", ex.Message); }
+        finally { _loading = false; SetBusy(false); }
     }
 
-    private GameConnectionService NewCandidate(bool adb, DesktopWindowInfo? window) => new(new GameConnectionSettings
+    private GameConnectionSettings NewSettings(bool adb, DesktopWindowInfo? window) => new()
     {
         Source = adb ? GameCaptureSource.Adb : GameCaptureSource.Pc,
         AdbPath = AdbPathBox.Text.Trim(),
         AdbSerial = AdbSerialBox.Text.Trim(),
-        AndroidPackageName = (ScreenSelector.SelectedItem as AdbGameDisplay)?.PackageName ?? "",
-        AndroidDisplayId = (ScreenSelector.SelectedItem as AdbGameDisplay)?.DisplayId,
-        FollowFocusedGame = FollowFocusedScreen.IsChecked == true,
         WindowTitle = window?.Name ?? _capture.Connection.Settings.WindowTitle,
-    }, window?.Handle ?? IntPtr.Zero);
+        Emulator = window is null ? EmulatorKind.Unknown : GameConnectionService.GetWindowKind(window.Handle),
+        AndroidPackageName = (DisplaySelector.SelectedItem as AdbGameDisplay)?.PackageName ?? "",
+        AndroidDisplayId = (DisplaySelector.SelectedItem as AdbGameDisplay)?.DisplayId,
+        FollowFocusedGame = FollowFocusedGameToggle.IsChecked == true,
+    };
+
+    private GameConnectionService NewCandidate(bool adb, DesktopWindowInfo? window)
+        => new(NewSettings(adb, window), window?.Handle ?? IntPtr.Zero);
 
     private async void OnApply(object sender, RoutedEventArgs e)
     {
@@ -245,11 +277,6 @@ public partial class GameConnectionWindow : Window
         if (!IsAdb)
         {
             await ApplyAsync(NewCandidate(false, null));
-            return;
-        }
-        if (FollowFocusedScreen.IsChecked != true && ScreenSelector.SelectedItem is not AdbGameDisplay)
-        {
-            SetStatus(Tone.Error, "还没选游戏屏幕", "请刷新屏幕并选择官服或 B服。");
             return;
         }
         if (_tested is not null)
@@ -260,7 +287,12 @@ public partial class GameConnectionWindow : Window
         var window = (WindowSelector.SelectedItem as WindowChoice)?.Window;
         if (window is null)
         {
-            SetStatus(Tone.Error, "还没选游戏窗口", "打开 MuMu 里的明日方舟，点刷新，选对应的实例窗口。");
+            SetStatus(Tone.Error, "还没选游戏窗口", "打开所选模拟器里的明日方舟，刷新并选择对应窗口。");
+            return;
+        }
+        if (DisplaySelector.SelectedItem is not AdbGameDisplay)
+        {
+            await RefreshDisplaysAsync();
             return;
         }
         var candidate = NewCandidate(true, window);
@@ -271,11 +303,11 @@ public partial class GameConnectionWindow : Window
             var png = await Task.Run(() => candidate.CaptureAdbScreen(_capture.MaxCaptureWidth));
             if (png is null) throw new IOException(candidate.Status);
             if (candidate.FindGameWindow() == IntPtr.Zero || candidate.GetViewport(window.Handle) is null)
-                throw new IOException("MuMu 游戏显示区域不可用，请恢复游戏窗口后重试。");
+                throw new IOException("游戏显示区域不可用，请恢复对应模拟器窗口后重试。");
             var (preview, width, height) = Decode(png);
             _tested = candidate;
             SetStatus(Tone.Ok, "已读到画面",
-                preview is null ? candidate.Status : $"{width}×{height} · 点「应用」开始使用", preview);
+                preview is null ? candidate.Status : $"{candidate.CurrentDisplay?.Label} · {width}×{height} · 点「应用」开始使用", preview);
             ApplyButton.Content = "应用";
         }
         catch (Exception ex)

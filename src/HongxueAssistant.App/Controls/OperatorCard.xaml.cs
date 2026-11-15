@@ -36,7 +36,9 @@ public partial class OperatorCard : UserControl
     public bool IsTracked { get; set; }
 
     public Func<string, bool>? IsBannedCheck { get; set; }
+    public Func<string, bool>? IsCovenantBannedCheck { get; set; }
     public bool IsBanned { get; set; }
+    private bool IsCovenantBlocked => DataContext is Operator op && IsCovenantBannedCheck?.Invoke(op.Name) == true;
 
     private bool _isTrackingList;
     public bool IsTrackingList
@@ -99,7 +101,9 @@ public partial class OperatorCard : UserControl
         // Inherit IsBannedCheck from parent view if not explicitly set
         if (IsBannedCheck == null)
             IsBannedCheck = FindAncestor<OperatorBrowseView>()?.IsBannedCheck;
-        IsBanned = IsBannedCheck != null && IsBannedCheck(op.Name);
+        if (IsCovenantBannedCheck == null)
+            IsCovenantBannedCheck = FindAncestor<OperatorBrowseView>()?.IsCovenantBannedCheck;
+        IsBanned = IsBannedCheck?.Invoke(op.Name) == true || IsCovenantBlocked;
 
         TierRail.SetResourceReference(Border.BackgroundProperty,
             op.Tier >= 5 ? "EliteBrush" : op.Tier == 4 ? "AccentSolidBrush" : "BorderBrush");
@@ -141,13 +145,14 @@ public partial class OperatorCard : UserControl
 
     public void RefreshBannedState(bool isBanned)
     {
-        IsBanned = isBanned;
+        IsBanned = isBanned || IsCovenantBlocked;
         UpdateBanButton();
         UpdateBannedDisplay();
     }
 
     private void OnBanClick(object sender, RoutedEventArgs e)
     {
+        if (IsCovenantBlocked) return;
         IsBanned = !IsBanned;
         UpdateBanButton();
         UpdateBannedDisplay();
@@ -193,7 +198,9 @@ public partial class OperatorCard : UserControl
 
     private void UpdateBanButton()
     {
-        BanButton.ToolTip = IsBanned ? "取消禁用" : "标记为本局禁用";
+        var covenantBlocked = IsCovenantBlocked;
+        BanButton.IsEnabled = !covenantBlocked;
+        BanButton.ToolTip = covenantBlocked ? "本局盟约禁用，取消对应盟约 Ban 后恢复" : IsBanned ? "取消禁用" : "标记为本局禁用";
         UpdateButtonVisibility();
         if (IsBanned)
         {

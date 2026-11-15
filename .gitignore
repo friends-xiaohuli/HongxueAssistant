@@ -114,6 +114,7 @@ __pycache__/
 MODIFICATIONS.md
 
 # Local screenshot regression fixtures (excluded from public CI)
+/src/HongxueAssistant.Tests/TestData/ui90-1600/
 /src/HongxueAssistant.Tests/TestData/4k-scale90/商店冻结.png
 /src/HongxueAssistant.Tests/TestData/4k-scale90/商店普通.png
 /src/HongxueAssistant.Tests/TestData/4k-scale90/局内信息.png
@@ -146,3 +147,6 @@ MODIFICATIONS.md
 /src/HongxueAssistant.Tests/TestData/solo-overscroll-before-1280x720.png
 /src/HongxueAssistant.Tests/TestData/solo-right-full-1449x815.png
 /src/HongxueAssistant.Tests/TestData/solo-right-partial-1449x815.png
+/src/HongxueAssistant.Tests/TestData/regulation-level-opening-1449x815.png
+/src/HongxueAssistant.Tests/TestData/regulation-level-shop-1449x815.png
+/src/HongxueAssistant.Tests/TestData/shop-round1-multiplayer-1449x815.png

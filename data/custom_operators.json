@@ -1,5 +1,6 @@
 {
   "source": "https://torappu.prts.wiki/gamedata/latest/excel/",
+  "covenantSource": "https://zonai.skland.com/web/v1/game/garrison/guide/resource",
   "season": "act3autochess/V3_1",
   "notice": "PRTS 原始游戏数据；自选干员无特质，技能和模组由游戏内配置决定；Ⅴ/Ⅵ阶合并为一个候选。",
   "operators": [
@@ -571,10 +572,10 @@
       "isCustom": true,
       "tier": 5,
       "iconPath": "icons/operators/新约能天使.png",
-      "coreCovenants": [
-        "炎"
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
       ],
-      "additionalCovenants": [],
       "normal": {
         "traits": []
       },
@@ -673,10 +674,10 @@
       "isCustom": true,
       "tier": 5,
       "iconPath": "icons/operators/死芒.png",
-      "coreCovenants": [
-        "维多利亚"
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
       ],
-      "additionalCovenants": [],
       "normal": {
         "traits": []
       },
@@ -741,10 +742,10 @@
       "isCustom": true,
       "tier": 5,
       "iconPath": "icons/operators/焰影苇草.png",
-      "coreCovenants": [
-        "维多利亚"
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
       ],
-      "additionalCovenants": [],
       "normal": {
         "traits": []
       },
@@ -930,7 +931,6 @@
       "tier": 5,
       "iconPath": "icons/operators/缄默德克萨斯.png",
       "coreCovenants": [
-        "炎",
         "叙拉古"
       ],
       "additionalCovenants": [],
@@ -964,10 +964,10 @@
       "isCustom": true,
       "tier": 5,
       "iconPath": "icons/operators/能天使.png",
-      "coreCovenants": [
-        "炎"
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
       ],
-      "additionalCovenants": [],
       "normal": {
         "traits": []
       },
@@ -998,10 +998,10 @@
       "isCustom": true,
       "tier": 5,
       "iconPath": "icons/operators/莫斯提马.png",
-      "coreCovenants": [
-        "炎"
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
       ],
-      "additionalCovenants": [],
       "normal": {
         "traits": []
       },

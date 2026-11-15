@@ -362,6 +362,7 @@ public class InformationRecordingTests(EnemyRecognitionFixture fixture, ITestOut
         tracking.SetDeployPool(pool);
         tracking.TrackLineup(new Lineup { Id = "saved", Slots = [new() { OperatorName = "角峰", IsElite = true }] });
         var bans = new BanViewModel();
+        var runPlanner = new LineupPlannerViewModel(new LineupPlanner([], []), [], bans, EquipmentTestData.Rules);
         analyzer.AutoBanListComputed += bans.SetBans;
         var resets = 0;
         var publications = 0;
@@ -372,6 +373,7 @@ public class InformationRecordingTests(EnemyRecognitionFixture fixture, ITestOut
             if (!state.TryStartNewRun(changed)) return;
             await Task.Yield();
             tracking.StartNewRun();
+            runPlanner.Strategy = PlannerStrategy.Other;
             resets++;
         };
         analyzer.AnalysisFailed += _ => failures++;
@@ -380,9 +382,11 @@ public class InformationRecordingTests(EnemyRecognitionFixture fixture, ITestOut
             state.MarkRecorded();
             publications++;
             pool.IsOwned("角峰").Should().Be(!expectReset, "reset must finish before the result is published");
+            runPlanner.Strategy.Should().Be(expectReset ? PlannerStrategy.Other : PlannerStrategy.Pith);
         };
         void AcquireTargets()
         {
+            runPlanner.Strategy = PlannerStrategy.Pith;
             pool.SetCount("角峰", 3);
             pool.SetElite("角峰", true);
             tracking.SyncDeployPool();
@@ -431,6 +435,7 @@ public class InformationRecordingTests(EnemyRecognitionFixture fixture, ITestOut
             publications.Should().Be(before);
             resets.Should().Be(1);
             pool.CountOf("角峰").Should().Be(3);
+            runPlanner.Strategy.Should().Be(PlannerStrategy.Pith, "failed recognition must retain the current strategy");
             incomplete = false;
             reverse = false;
             failures = 0;
@@ -644,6 +649,30 @@ public class InformationRecordingTests(EnemyRecognitionFixture fixture, ITestOut
             && r.AdditionalCovenants.Count == 16 && r.EnemyFaction == null);
         enemyEvents.Should().Be(0);
         failures.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SwitchingAndroidDisplayDuringBanOcrDiscardsTheResult()
+    {
+        var bytes = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "TestData", "info-ingame-1920x1080.png"));
+        long revision = 1;
+        var ocr = new Mock<IOcrEngine>();
+        ocr.Setup(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(async (byte[] png, int x, int y, int w, int h) =>
+            {
+                var result = await fixture.Engine.RecognizeRegionAsync(png, x, y, w, h);
+                revision = 2;
+                return result;
+            });
+        var analyzer = await CreateAnalyzerAsync(bytes, ocr.Object);
+        analyzer.CaptureRevisionProvider = () => revision;
+        var committed = 0;
+        analyzer.AnalysisCompleted += _ => committed++;
+        analyzer.AutoBanListComputed += _ => committed++;
+        analyzer.EnemyDetected += _ => committed++;
+        analyzer.PrepareNewRunAsync = _ => { committed++; return Task.CompletedTask; };
+        await analyzer.RunAnalysisAsync();
+        committed.Should().Be(0);
     }
 
     private Task<BanScreenAnalyzer> CreateAnalyzerAsync(byte[]? bytes, IOcrEngine ocr)

@@ -80,6 +80,16 @@ public class EnemyRecognizerTests(EnemyRecognitionFixture fixture, ITestOutputHe
     }
 
     [Theory]
+    [InlineData("假想敌：胄")]
+    [InlineData("假想敌：冑")]
+    public void SimilarHelmetGlyphResolvesToTheSameBoss(string text)
+    {
+        fixture.Bosses.TryMatchBossFromOcr([text], out var name).Should().BeTrue();
+        name.Should().Be("假想敌：胄");
+        fixture.Bosses.Lookup(name!).Should().NotBeNull();
+    }
+
+    [Theory]
     [InlineData("剧毒")]
     [InlineData("腐蚀")]
     [InlineData("飞向")]

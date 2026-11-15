@@ -129,42 +129,38 @@ public sealed class InformationReadSessionTests
         reason.Should().Contain("重复");
     }
 
-    [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, false)]
-    public void UnselectedCoreGroupsAndOrdinaryIncompleteRostersHaveDifferentBanRules(bool grouped, bool expectedBan)
+    [Fact]
+    public void CoreBansApplyRegardlessOfGroupedPresentation()
     {
         var op = new Operator { Name = "核心禁用但附加可用", CoreCovenants = ["炎"], AdditionalCovenants = ["精准"] };
-        CovenantBanRules.IsBanned(op, new HashSet<string> { "炎" }, new HashSet<string>(), grouped).Should().Be(expectedBan);
+        CovenantBanRules.IsExcluded(op, new HashSet<string> { "炎" }).Should().BeTrue();
     }
 
     [Fact]
     public void OrdinaryRosterIntersectionStillBansWhenCoreAndAdditionalAreBothDisabled()
     {
         var op = new Operator { CoreCovenants = ["炎"], AdditionalCovenants = ["精准"] };
-        CovenantBanRules.IsBanned(op, new HashSet<string> { "炎" }, new HashSet<string> { "精准" }, false).Should().BeTrue();
-    }
-
-    [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    public void OperatorsWithoutCoreAreBannedWhenAllTheirAdditionalAffiliationsAreDisabled(bool grouped, bool expected)
-    {
-        var op = new Operator { Name = "霍尔海雅", AdditionalCovenants = ["奥术", "精准"] };
-        CovenantBanRules.IsBanned(op, new HashSet<string>(), new HashSet<string> { "奥术", "精准" }, grouped).Should().Be(expected);
-        CovenantBanRules.IsBanned(op, new HashSet<string>(), new HashSet<string> { "奥术" }, grouped).Should().BeFalse();
+        CovenantBanRules.IsExcluded(op, new HashSet<string> { "炎", "精准" }).Should().BeTrue();
     }
 
     [Fact]
-    public void ManualBanAndManualUnbanSurviveTheNextAutomaticResult()
+    public void OperatorsWithoutCoreAreBannedWhenAllTheirAdditionalAffiliationsAreDisabled()
+    {
+        var op = new Operator { Name = "霍尔海雅", AdditionalCovenants = ["奥术", "精准"] };
+        CovenantBanRules.IsExcluded(op, new HashSet<string> { "奥术", "精准" }).Should().BeTrue();
+        CovenantBanRules.IsExcluded(op, new HashSet<string> { "奥术" }).Should().BeFalse();
+    }
+
+    [Fact]
+    public void UpstreamAutomaticResultReplacesManualEditsUntilTheNextRunReset()
     {
         var vm = new BanViewModel();
         vm.SetBans(["自动禁用"]);
-        vm.SetManualBan("自动禁用", false);
-        vm.SetManualBan("手动禁用", true);
+        vm.ToggleBan("自动禁用");
+        vm.ToggleBan("手动禁用");
         vm.SetBans(["自动禁用"]);
-        vm.IsBanned("自动禁用").Should().BeFalse();
-        vm.IsBanned("手动禁用").Should().BeTrue();
+        vm.IsBanned("自动禁用").Should().BeTrue();
+        vm.IsBanned("手动禁用").Should().BeFalse();
         vm.ClearBans();
         vm.SetBans(["自动禁用"]);
         vm.IsBanned("自动禁用").Should().BeTrue();

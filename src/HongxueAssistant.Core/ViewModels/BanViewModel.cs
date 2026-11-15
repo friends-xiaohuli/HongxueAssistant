@@ -4,8 +4,6 @@ public class BanViewModel
 {
     private readonly HashSet<string> _bannedNames = [];
     private readonly HashSet<string> _automaticNames = [];
-    private readonly HashSet<string> _manualBanned = [];
-    private readonly HashSet<string> _manualAllowed = [];
     private readonly HashSet<string> _bannedCovenants = [];
 
     public IReadOnlySet<string> BannedNames => _bannedNames;
@@ -39,24 +37,19 @@ public class BanViewModel
                 _bannedNames.Add(name);
                 _automaticNames.Add(name);
             }
-        _bannedNames.UnionWith(_manualBanned);
-        _bannedNames.ExceptWith(_manualAllowed);
         BansChanged?.Invoke();
     }
 
-    public void ToggleBan(string name) => SetManualBan(name, !_bannedNames.Contains(name));
-
-    public void SetManualBan(string name, bool banned)
+    public void ToggleBan(string name)
     {
         _automaticNames.Remove(name);
-        if (banned) { _manualBanned.Add(name); _manualAllowed.Remove(name); _bannedNames.Add(name); }
-        else { _manualAllowed.Add(name); _manualBanned.Remove(name); _bannedNames.Remove(name); }
+        if (!_bannedNames.Remove(name))
+            _bannedNames.Add(name);
         BansChanged?.Invoke();
     }
 
     public void ClearBans()
     {
-        _manualBanned.Clear(); _manualAllowed.Clear();
         _bannedNames.Clear();
         _automaticNames.Clear();
         _bannedCovenants.Clear();

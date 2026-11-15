@@ -20,10 +20,12 @@ public sealed record TrackingOrigin
     public int ExpiresAt { get; init; }
     public string? TransformedCovenant { get; init; }
     public List<string> Equipments { get; init; } = [];
+    public List<CandidateEquipment> CandidateEquipments { get; init; } = [];
 
     public static TrackingOrigin From(TrackingEntry entry, string lineupId) => new()
     {
         LineupId = lineupId, IsElite = entry.IsElite, Role = entry.Role, Stages = entry.Stages,
-        ExpiresAt = entry.ExpiresAt, TransformedCovenant = entry.TransformedCovenant, Equipments = [.. entry.Equipments]
+        ExpiresAt = entry.ExpiresAt, TransformedCovenant = entry.TransformedCovenant, Equipments = [.. entry.Equipments],
+        CandidateEquipments = [.. entry.CandidateEquipments.Select(c => c.Clone())]
     };
 }

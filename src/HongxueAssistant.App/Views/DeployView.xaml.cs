@@ -53,7 +53,7 @@ public partial class DeployView : UserControl
     private string _poolQuery = "";
     private string? _locatedSearch;
     private bool _ownedOnly;
-    private bool _extensionExpanded;
+    private bool _extensionExpanded = true;
     private bool _ready;
 
     // drag state
@@ -1087,7 +1087,7 @@ public partial class DeployView : UserControl
         bool searching = _poolQuery.Length > 0;
         bool Match(DeployPoolItem i) =>
             (!_ownedOnly || i.Owned)
-            && (!searching || i.Name.Contains(_poolQuery, StringComparison.OrdinalIgnoreCase) || i.Sub.Contains(_poolQuery, StringComparison.OrdinalIgnoreCase));
+            && (!searching || SearchMatch.Matches(_poolQuery, i.Name, i.Sub));
         int shown = 0;
         foreach (var g in groups)
         {
@@ -1376,7 +1376,7 @@ public partial class DeployView : UserControl
     private void OnAddOther(object sender, RoutedEventArgs e)
     {
         var strategies = _operators.Values.Select(o => o.RequiredStrategyId).Where(s => s.Length > 0).ToHashSet();
-        var dlg = new OperatorPickerWindow(_operators.Values, "", strategies) { Owner = Window.GetWindow(this) };
+        var dlg = new OperatorPickerWindow(_operators.Values.ExceptBy(Groups().Where(g => g.Kind != DeployPoolGroupKind.Other).SelectMany(g => g.Items).Select(i => i.Name), o => o.Name), "", strategies) { Owner = Window.GetWindow(this) };
         dlg.ShowDialog();
         if (dlg.Result is not { Length: > 0 } name) return;
         bool tracked = _tracking?.TrackedOperators.Any(t => t.Name == name) == true;
@@ -1388,6 +1388,27 @@ public partial class DeployView : UserControl
         PoolFilterList.SelectedIndex = 0;
         if (extension) { _extensionExpanded = true; _activeTier = _operators[name].Tier; }
         _tracking?.SyncDeployPool();
+        SaveState();
+        RefreshPool();
+        ScheduleReplan();
+    }
+
+    public void ApplyRecognizedPurchases(IReadOnlyList<string> names)
+    {
+        var changed = false;
+        foreach (var name in names)
+        {
+            if (_operators.ContainsKey(name))
+            {
+                if (_state.IsOwned(name)) continue;
+                _state.SetOwned(name, true);
+                changed = true;
+            }
+            else if (_tracking!.TrackedEquipment.FirstOrDefault(e => e.Name == name) is { IsAcquired: false })
+                _tracking.ToggleAcquired(name);
+        }
+        if (!changed) return;
+        _tracking!.SyncDeployPool();
         SaveState();
         RefreshPool();
         ScheduleReplan();

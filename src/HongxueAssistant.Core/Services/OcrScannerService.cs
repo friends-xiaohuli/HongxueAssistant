@@ -1,5 +1,6 @@
-// Modified for ASP Assistant Regulation on 2026-11-11; see NOTICE.
+﻿// Modified for ASP Assistant Regulation on 2026-11-13; see NOTICE.
 using System.Threading.Channels;
+using System.Diagnostics;
 using System.Timers;
 using HongxueAssistant.Core.GameModes;
 using HongxueAssistant.Core.Models;
@@ -14,10 +15,37 @@ public class OcrScannerService : IDisposable
     private readonly IOcrStrategy _ocrStrategy;
     private readonly ShopReader _shopReader;
     private readonly IOcrEngine _ocrEngine;
+    private readonly RegulationLevelReader _regulationReader;
+    private readonly object _runLock = new();
+    private int? _regulationLevel;
+    private int _runRevision;
+    private DateTime _nextRegulationRead = DateTime.MinValue;
     private readonly GameState.GameState _gameState;
     private readonly IReadOnlyList<string> _shopNames;
     private readonly Timer _scanTimer;
     private readonly ShopStateStabilizer _stabilizer = new();
+    private readonly ShopPurchaseDetector _purchases = new();
+    private ShopEconomy? _purchaseEconomy;
+    public Func<IReadOnlySet<string>>? PurchaseTargets { get; init; }
+    public event Action<IReadOnlyList<string>, long, int>? PurchasesDetected;
+    public int RunRevision { get { lock (_runLock) return _runRevision; } }
+    private bool _automaticPurchaseTracking;
+    public bool AutomaticPurchaseTracking
+    {
+        get { lock (_runLock) return _automaticPurchaseTracking; }
+        set
+        {
+            lock (_runLock)
+            {
+                if (_automaticPurchaseTracking == value) return;
+                _automaticPurchaseTracking = value;
+                _runRevision++;
+                AppLogger.Info("ShopPurchase", $"Automatic marking enabled={value}, revision={_runRevision}");
+                _purchases.Reset("automatic-marking-changed");
+                _purchaseEconomy = null;
+            }
+        }
+    }
     private int _scanning; // re-entry guard (0=idle, 1=busy)
 
     // Accumulated ban set for manual screenshot scans.
@@ -36,15 +64,40 @@ public class OcrScannerService : IDisposable
 
     public event Action<GameState.GameState>? GameStateUpdated;
 
+    public event Action? RegulationLevelChanged;
+    public int? RegulationLevel { get { lock (_runLock) return _regulationLevel; } }
+
+    public void ResetRegulationLevel()
+    {
+        lock (_runLock)
+        {
+            _runRevision++;
+            _regulationLevel = null;
+            _nextRegulationRead = DateTime.MinValue;
+        }
+        RegulationLevelChanged?.Invoke();
+    }
+
     /// <summary>Raised when the (confirmed) terminal level read from the shop's upgrade card changes.</summary>
     public event Action<int>? TerminalLevelChanged;
 
     /// <summary>Optional: reads the terminal level every <see cref="TerminalReadInterval"/> while the shop is visible.</summary>
     public TerminalLevelReader? TerminalReader { get; init; }
 
+    /// <summary>Round, funds, upgrade price and mode from the shop HUD; null leaves them unread.</summary>
+    public ShopEconomyReader? EconomyReader { get; init; }
+
+    /// <summary>Raised on the scan thread when the confirmed shop HUD values change (null after a reset).</summary>
+    public event Action<ShopEconomy?>? EconomyChanged;
+    public ShopEconomy? CurrentEconomy { get { lock (_runLock) return _economy.Current; } }
+
+    private readonly ShopEconomyTracker _economy = new();
+    private DateTime _nextEconomyRead;
+    private static readonly TimeSpan EconomyReadInterval = TimeSpan.FromSeconds(2);
+
     /// <summary>Recognises the preparation board (map + camera) for the deployment overlay; optional.</summary>
     public BoardRecognizer? BoardRecognizer { get; init; }
-    private readonly BoardMatchStabilizer _board = new();
+    private BoardMatchStabilizer _board = new();
 
     /// <summary>The recognised board changed (null: no board on screen).</summary>
     public event Action<BoardMatch?>? BoardChanged;
@@ -103,6 +156,7 @@ public class OcrScannerService : IDisposable
         _ocrStrategy = ocrStrategy;
         _shopReader = shopReader;
         _ocrEngine = ocrEngine;
+        _regulationReader = new RegulationLevelReader(ocrEngine);
         _informationDetector = new InformationScreenDetector(ocrEngine, ocrStrategy);
         _gameState = gameState;
         _shopNames = shopNames;
@@ -144,35 +198,35 @@ public class OcrScannerService : IDisposable
         try
         {
             var connection = _getConnection?.Invoke();
-            if (!ReferenceEquals(connection, _lastConnection))
+            var captureRevision = connection?.CaptureRevision ?? 0;
+            if (!ReferenceEquals(connection, _lastConnection) || captureRevision != _lastCaptureRevision)
             {
                 _lastConnection = connection;
+                _lastCaptureRevision = captureRevision;
+                _board = new();
+                BoardChanged?.Invoke(null);
+                ResetTerminalLevel();
                 _stabilizer.Reset();
                 _themeCandidate = null;
                 _themeConfirmations = 0;
                 _informationState = new InformationScreenState();
                 _banScreenActive = false;
                 _banScreenAbsentTicks = 0;
+                ResetRegulationLevel();
+                ResetEconomy();
                 _gameState.ShopItems = [];
                 GameStateUpdated?.Invoke(_gameState);
             }
+            int runRevision;
+            lock (_runLock) runRevision = _runRevision;
             var screenshot = _captureScreen();
-            var revision = connection?.CaptureRevision ?? 0;
-            if (revision != _lastCaptureRevision)
-            {
-                _lastCaptureRevision = revision;
-                _informationState = new InformationScreenState();
-                _banScreenActive = false; _banScreenAbsentTicks = 0;
-                _themeCandidate = null; _themeConfirmations = 0;
-                ClearShopItems();
-                ObserveBoard(null);
-            }
-            if (!IsCurrentCapture(connection, revision)) return;
+            if (!IsCurrentCapture(connection, captureRevision)) return;
             if (screenshot == null)
             {
+                lock (_runLock) _purchases.Reset("capture-unavailable");
                 _informationState.Suspend();
                 if (connection?.IsAdb == true)
-                    ClearShopItems();
+                    PublishShopItems([]);
                 else
                     // 切换到辅助窗口时暂时无法截图，保留最后一次识别供追踪切换使用。
                     _stabilizer.Reset();
@@ -190,12 +244,17 @@ public class OcrScannerService : IDisposable
             // Ban screen detection runs every tick unless explicitly paused
             // (e.g. when app-owned overlays cover the game window).
             if (!_pauseBanScreenDetection)
-                await DetectBanScreenAsync(screenshot, imgWidth, imgHeight, connection, revision);
+                await DetectBanScreenAsync(screenshot, imgWidth, imgHeight, connection, captureRevision);
 
-            if (!IsCurrentCapture(connection, revision)) return;
+            if (!IsCurrentCapture(connection, captureRevision)) return;
+
+            if (!_pauseBanScreenDetection)
+                await ReadRegulationLevelAsync(screenshot, imgWidth, imgHeight, connection, runRevision, captureRevision);
+            if (!IsCurrentCapture(connection, captureRevision)) return;
 
             if (_pauseBanScreenDetection || _banScreenActive)
             {
+                lock (_runLock) _purchases.Reset(_pauseBanScreenDetection ? "recognition-paused" : "information-screen");
                 PublishShopItems([]);
                 ObserveBoard(null);
                 return;
@@ -205,9 +264,49 @@ public class OcrScannerService : IDisposable
             ObserveBoard(BoardRecognizer is { } board ? board.Recognize(ImageBytes.ToBmp(screenshot)) : null);
             ReadGameTheme(screenshot);
             var rawItems = await _shopReader.ReadAsync(screenshot, imgWidth, imgHeight, _shopNames);
-            if (!IsCurrentCapture(connection, revision)) return;
+            if (!IsCurrentCapture(connection, captureRevision)) return;
             PublishShopItems(rawItems);
-            await ReadTerminalLevelAsync(screenshot, imgWidth, imgHeight, connection, revision);
+            await ReadTerminalLevelAsync(screenshot, imgWidth, imgHeight, connection, captureRevision);
+            var forceFundsRead = false;
+            var automaticPurchases = AutomaticPurchaseTracking;
+            if (automaticPurchases && PurchaseTargets is not null)
+                lock (_runLock) forceFundsRead = _purchases.NeedsFundsRead(rawItems, _shopReader.IsShopOpen);
+            ShopEconomy? economy = null;
+            if (rawItems.Count > 0 || _shopReader.IsShopOpen)
+                economy = await ReadEconomyAsync(screenshot, imgWidth, imgHeight, connection, runRevision, captureRevision, forceFundsRead, rawItems);
+            if (automaticPurchases && PurchaseTargets is { } targets)
+            {
+                var names = targets();
+                IReadOnlyList<string> purchased;
+                bool confirm;
+                ShopEconomy? purchaseEconomy;
+                lock (_runLock)
+                {
+                    if (runRevision != _runRevision || _pauseBanScreenDetection || !IsCurrentCapture(connection, captureRevision)) return;
+                    if (economy is not null) _purchaseEconomy = economy;
+                    purchased = _purchases.Observe(screenshot, rawItems, _shopReader.IsShopOpen, _purchaseEconomy, names);
+                    confirm = _purchases.NeedsConfirmation && rawItems.Count > 0 && EconomyReader is not null;
+                    purchaseEconomy = _purchaseEconomy;
+                }
+                if (confirm)
+                {
+                    var confirmationTime = Stopwatch.StartNew();
+                    var confirmation = _captureScreen();
+                    if (confirmation is not null && IsCurrentCapture(connection, captureRevision)
+                        && await _shopReader.IsSameOpenShopAsync(screenshot, confirmation, rawItems))
+                    {
+                        var freshEconomy = await EconomyReader!.ReadPurchaseAsync(confirmation, imgWidth, imgHeight, purchaseEconomy!);
+                        lock (_runLock)
+                        {
+                            if (runRevision != _runRevision || _pauseBanScreenDetection || !IsCurrentCapture(connection, captureRevision)) return;
+                            _purchaseEconomy = freshEconomy;
+                            purchased = _purchases.Observe(confirmation, rawItems, true, freshEconomy, names);
+                        }
+                    }
+                    AppLogger.Info("ShopPurchase", $"Lightweight recheck: confirmed={purchased.Count > 0}, elapsed={confirmationTime.ElapsedMilliseconds} ms");
+                }
+                if (purchased.Count > 0) PurchasesDetected?.Invoke(purchased, captureRevision, runRevision);
+            }
         }
         catch (Exception ex)
         {
@@ -219,6 +318,28 @@ public class OcrScannerService : IDisposable
         {
             Interlocked.Exchange(ref _scanning, 0);
         }
+    }
+
+    private bool IsCurrentCapture(GameConnectionService? connection, long captureRevision)
+        => ReferenceEquals(connection, _getConnection?.Invoke()) && (connection?.RefreshCaptureRevision() ?? 0) == captureRevision;
+
+    private async Task ReadRegulationLevelAsync(byte[] screenshot, int width, int height,
+        GameConnectionService? connection, int revision, long captureRevision)
+    {
+        lock (_runLock)
+        {
+            if (revision != _runRevision || DateTime.UtcNow < _nextRegulationRead) return;
+        }
+        var level = await _regulationReader.ReadAsync(screenshot, width, height);
+        lock (_runLock)
+        {
+            if (revision != _runRevision || _pauseBanScreenDetection
+                || !IsCurrentCapture(connection, captureRevision)) return;
+            _nextRegulationRead = DateTime.UtcNow.AddSeconds(3);
+            if (level is null) return;
+            _regulationLevel = level;
+        }
+        RegulationLevelChanged?.Invoke();
     }
 
     private void ReadGameTheme(byte[] screenshot)
@@ -243,11 +364,11 @@ public class OcrScannerService : IDisposable
         GameThemeDetected?.Invoke(theme);
     }
 
-    private async Task ReadTerminalLevelAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long revision)
+    private async Task ReadTerminalLevelAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long captureRevision)
     {
         if (TerminalReader is null || DateTime.UtcNow < _nextTerminalRead) return;
         var level = await TerminalReader.ReadAsync(screenshot, width, height, ThemeProvider?.Invoke() ?? GameShopTheme.Terminal);
-        if (!IsCurrentCapture(connection, revision)) return;
+        if (!IsCurrentCapture(connection, captureRevision)) return;
         // Not visible (battle, menus): look again a little later. Confirming a change reads again soon.
         _nextTerminalRead = DateTime.UtcNow + (level is null ? TerminalReadInterval * 2 : TerminalReadInterval);
         if (level is not null && (level != _terminalTracker.Level || _terminalTracker.IsRestored))
@@ -260,6 +381,48 @@ public class OcrScannerService : IDisposable
         }
     }
 
+    /// <summary>Only while shop cards are visible: the HUD reads cost several OCR calls.</summary>
+    private async Task<ShopEconomy?> ReadEconomyAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, int revision, long captureRevision, bool forceFundsRead, IReadOnlyList<ShopItem> cards)
+    {
+        if (EconomyReader is null) return null;
+        lock (_runLock)
+        {
+            if (revision != _runRevision || !forceFundsRead && DateTime.UtcNow < _nextEconomyRead) return null;
+        }
+        ShopEconomy? previous;
+        lock (_runLock) previous = forceFundsRead && DateTime.UtcNow < _nextEconomyRead
+            && _purchases.CanReuseHudLayout(cards, width, height) ? _purchaseEconomy : null;
+        var read = previous is not null
+            ? previous with { Money = await EconomyReader.ReadMoneyAsync(screenshot, width, height) }
+            : await EconomyReader.ReadAsync(screenshot, width, height);
+        ShopEconomy? current;
+        lock (_runLock)
+        {
+            if (revision != _runRevision || _pauseBanScreenDetection
+                || !IsCurrentCapture(connection, captureRevision)) return null;
+            if (previous is null) _nextEconomyRead = DateTime.UtcNow + EconomyReadInterval;
+            if (!_economy.Observe(read)) return read;
+            current = _economy.Current;
+        }
+        AppLogger.Info("Economy", $"{current}");
+        EconomyChanged?.Invoke(current);
+        return read;
+    }
+
+    /// <summary>New game (opening information recorded): forget the last game's HUD values.</summary>
+    public void ResetEconomy()
+    {
+        lock (_runLock)
+        {
+            _runRevision++;
+            _economy.Reset();
+            _purchases.Reset("economy-reset");
+            _purchaseEconomy = null;
+            _nextEconomyRead = DateTime.MinValue;
+        }
+        EconomyChanged?.Invoke(null);
+    }
+
     private void ObserveBoard(BoardMatch? match)
     {
         if (BoardRecognizer is null || !_board.Observe(match)) return;
@@ -267,18 +430,6 @@ public class OcrScannerService : IDisposable
         AppLogger.Info("Board", current is null ? "Board lost"
             : $"Board {current.Map.Id} ({current.Camera}) score={current.Score:F1} margin={current.Margin:F1}");
         BoardChanged?.Invoke(current);
-    }
-
-    private bool IsCurrentCapture(GameConnectionService? connection, long revision) =>
-        ReferenceEquals(connection, _getConnection?.Invoke())
-        && (connection?.RefreshCaptureRevision() ?? 0) == revision;
-
-    private void ClearShopItems()
-    {
-        _stabilizer.Reset();
-        if (_gameState.ShopItems.Count == 0) return;
-        _gameState.ShopItems = [];
-        GameStateUpdated?.Invoke(_gameState);
     }
 
     private void PublishShopItems(IReadOnlyList<ShopItem> items)
@@ -294,17 +445,16 @@ public class OcrScannerService : IDisposable
 
     /// <summary>Successful manual recording also consumes this opening screen.</summary>
     public void MarkInformationRecorded() => _informationState.MarkRecorded();
-    public void RetryFailedInformationAttempt() => _informationState.RetryFailedAttempt();
 
     public bool TryStartNewRun(bool bansChanged) => _informationState.TryStartNewRun(bansChanged);
 
-    private async Task DetectBanScreenAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long revision)
+    private async Task DetectBanScreenAsync(byte[] screenshot, int width, int height, GameConnectionService? connection, long captureRevision)
     {
         bool opening = await _informationDetector.IsOpeningScreenAsync(screenshot, width, height);
         bool canRearm = !opening && _informationState.IsConsumed
             && (await _informationDetector.IsGameplayAsync(screenshot, width, height)
                 || await _informationDetector.IsRunLobbyAsync(screenshot, width, height));
-        if (_pauseBanScreenDetection || !IsCurrentCapture(connection, revision)) return;
+        if (_pauseBanScreenDetection || !IsCurrentCapture(connection, captureRevision)) return;
 
         if (opening)
         {

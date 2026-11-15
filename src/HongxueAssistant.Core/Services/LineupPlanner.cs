@@ -75,7 +75,7 @@ public sealed class LineupPlanner
         int maxResultsPerVariant = 3, int maxNodes = 40000)
     {
         if (request.Goals.Count == 0) return new PlannerResult();
-        // A banned additional covenant only removes operators whose covenants are all banned; the rest can still
+        // A banned additional covenant removes coreless operators when all their additional covenants are banned; the rest can still
         // reach its activation count, so only banned core covenants are rejected as targets.
         var bannedGoal = request.Goals.FirstOrDefault(g => g.IsCore && request.BannedCovenants.Contains(g.Name));
         if (bannedGoal is not null) return new PlannerResult { Error = $"核心盟约“{bannedGoal.Name}”本局已被 Ban。" };

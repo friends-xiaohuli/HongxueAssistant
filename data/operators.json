@@ -524,7 +524,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员(已获得{showtag_value_1}名)，使已激活的【炎】【聚合】层数+2（每回合至多叠加16层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【炎】【聚合】层数+2（每回合至多叠加16层）"
           }
         ]
       },
@@ -532,7 +532,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员(已获得{showtag_value_1}名)，使已激活的【炎】【聚合】层数+4（每回合至多叠加32层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【炎】【聚合】层数+4（每回合至多叠加32层）"
           }
         ]
       }
@@ -766,7 +766,7 @@
         "traits": [
           {
             "traitType": "单次叠加",
-            "traitDescription": "<获得时>【谢拉格】层数+{showtag_value_1}（每次触发后升级，至多叠加12层）"
+            "traitDescription": "<获得时> 【谢拉格】层数+1（每次触发后升级，至多叠加12层）"
           }
         ]
       },
@@ -774,7 +774,7 @@
         "traits": [
           {
             "traitType": "单次叠加",
-            "traitDescription": "<获得时>【谢拉格】层数+{showtag_value_1}（每次触发后升级，至多叠加12层）"
+            "traitDescription": "<获得时> 【谢拉格】层数+1（每次触发后升级，至多叠加12层）"
           }
         ]
       }
@@ -1432,7 +1432,7 @@
         "traits": [
           {
             "traitType": "整备能力",
-            "traitDescription": "<获得时>获得{showtag_value_1}次免费刷新（触发2次后升级，至多获得3次免费刷新）"
+            "traitDescription": "<获得时> 获得1次免费刷新（触发2次后升级，至多获得3次免费刷新）"
           }
         ]
       },
@@ -1440,7 +1440,7 @@
         "traits": [
           {
             "traitType": "整备能力",
-            "traitDescription": "<获得时>获得{showtag_value_1}次免费刷新（触发2次后升级，至多获得3次免费刷新）"
+            "traitDescription": "<获得时> 获得1次免费刷新（触发2次后升级，至多获得3次免费刷新）"
           }
         ]
       }
@@ -2442,7 +2442,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每消耗3资金(已消耗{showtag_value_1}资金)，使已激活的【奥术】层数+2（每回合至多叠加18层）"
+            "traitDescription": "<休整期结束时> 本回合每消耗3资金，使已激活的【奥术】层数+2（每回合至多叠加18层）"
           }
         ]
       },
@@ -2450,7 +2450,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每消耗3资金(已消耗{showtag_value_1}资金)，使已激活的【奥术】层数+4（每回合至多叠加36层）"
+            "traitDescription": "<休整期结束时> 本回合每消耗3资金，使已激活的【奥术】层数+4（每回合至多叠加36层）"
           }
         ]
       }
@@ -2851,7 +2851,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员，使已激活的【投资人】层数+2(已获得{showtag_value_1}名)（每回合至多叠加16层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【投资人】层数+2（每回合至多叠加16层）"
           }
         ]
       },
@@ -2859,10 +2859,62 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员，使已激活的【投资人】层数+4(已获得{showtag_value_1}名)（每回合至多叠加32层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【投资人】层数+4（每回合至多叠加32层）"
           }
         ]
       }
+    },
+    {
+      "name": "盟约·辅助干员",
+      "iconPath": "icons/operators/盟约·辅助干员.png",
+      "tier": 3,
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "调和"
+      ],
+      "normal": {
+        "traits": [
+          {
+            "traitType": "作战能力",
+            "traitDescription": "<战斗中>攻击力和生命上限+20%"
+          }
+        ]
+      },
+      "elite": {
+        "traits": [
+          {
+            "traitType": "作战能力",
+            "traitDescription": "<战斗中>攻击力和生命上限+40%"
+          }
+        ]
+      },
+      "requiredStrategyId": "band_pith"
+    },
+    {
+      "name": "“暴躁铁皮”",
+      "iconPath": "icons/operators/“暴躁铁皮”.png",
+      "tier": 5,
+      "coreCovenants": [],
+      "additionalCovenants": [
+        "协防干员"
+      ],
+      "normal": {
+        "traits": [
+          {
+            "traitType": "作战能力",
+            "traitDescription": "<战斗中>攻击力和生命上限+60%"
+          }
+        ]
+      },
+      "elite": {
+        "traits": [
+          {
+            "traitType": "作战能力",
+            "traitDescription": "<战斗中>攻击力和生命上限+120%"
+          }
+        ]
+      },
+      "requiredStrategyId": "band_mech"
     },
     {
       "name": "矩",
@@ -3319,7 +3371,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每进行过1次刷新(已刷新{showtag_value_1}次)，使已激活的【叙拉古】层数+2（每回合至多叠加8层），【奇迹】层数+1（每回合至多叠加4层）"
+            "traitDescription": "<休整期结束时>本回合每进行过1次刷新，使已激活的【叙拉古】层数+2（每回合至多叠加8层），【奇迹】层数+1（每回合至多叠加4层）"
           }
         ]
       },
@@ -3327,7 +3379,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每进行过1次刷新(已刷新{showtag_value_1}次)，使已激活的【叙拉古】层数+4（每回合至多叠加16层），【奇迹】层数+2（每回合至多叠加8层）"
+            "traitDescription": "<休整期结束时>本回合每进行过1次刷新，使已激活的【叙拉古】层数+4（每回合至多叠加16层），【奇迹】层数+2（每回合至多叠加8层）"
           }
         ]
       }
@@ -3346,7 +3398,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员(已获得{showtag_value_1}名)，使已激活的【炎】【奥术】层数+2（每回合至多叠加24层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【炎】【奥术】层数+2（每回合至多叠加24层）"
           }
         ]
       },
@@ -3354,7 +3406,7 @@
         "traits": [
           {
             "traitType": "持续叠加",
-            "traitDescription": "<休整期结束时>本回合每获得过一名干员(已获得{showtag_value_1}名)，使已激活的【炎】【奥术】层数+4（每回合至多叠加48层）"
+            "traitDescription": "<休整期结束时> 本回合每获得过一名干员，使已激活的【炎】【奥术】层数+4（每回合至多叠加48层）"
           }
         ]
       }
@@ -3692,32 +3744,6 @@
           }
         ]
       }
-    },
-    {
-      "name": "“暴躁铁皮”",
-      "iconPath": "icons/operators/“暴躁铁皮”.png",
-      "tier": 5,
-      "coreCovenants": [],
-      "additionalCovenants": [
-        "协防干员"
-      ],
-      "normal": {
-        "traits": [
-          {
-            "traitType": "作战能力",
-            "traitDescription": "<战斗中>攻击力和生命上限+60%"
-          }
-        ]
-      },
-      "elite": {
-        "traits": [
-          {
-            "traitType": "作战能力",
-            "traitDescription": "<战斗中>攻击力和生命上限+120%"
-          }
-        ]
-      },
-      "requiredStrategyId": "band_mech"
     }
   ]
 }

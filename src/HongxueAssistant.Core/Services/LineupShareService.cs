@@ -1,3 +1,5 @@
+// Modified for HongxueAssistant on 2026-11-16; see NOTICE.
+// Modified for ASP Assistant Arknights on 2026-11-13; see NOTICE.
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -52,7 +54,8 @@ public class LineupShareService
         var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
         {
             lineup.Name, lineup.Slots, lineup.EarlySlots, lineup.MidSlots, lineup.SupportSlots, lineup.Strategies, lineup.SourceUrl, lineup.Guide,
-            RoundStages = lineup.RoundStages is { Count: > 0 } ? lineup.RoundStages : null
+            RoundStages = lineup.RoundStages is { Count: > 0 } ? lineup.RoundStages : null,
+            TargetCovenants = lineup.TargetCovenants.Count > 0 ? lineup.TargetCovenants : null
         }, JsonOptions)));
 
         await _exportGate.WaitAsync(ct);

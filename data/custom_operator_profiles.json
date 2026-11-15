@@ -1,5 +1,6 @@
 {
   "source": "https://torappu.prts.wiki/gamedata/latest/excel/",
+  "covenantSource": "https://zonai.skland.com/web/v1/game/garrison/guide/resource",
   "season": "act3autochess/V3_1",
   "notice": "PRTS 原始游戏数据；自选干员无特质，技能和模组由游戏内配置决定；Ⅴ/Ⅵ阶合并为一个候选。",
   "operators": {

@@ -24,21 +24,21 @@ public sealed class LineupListTests : IDisposable
     public void AvailabilityOnlyUsesLateOperatorsAndRefreshesAfterBanChanges()
     {
         var bans = new BanViewModel();
-        _vm.SetBanChecker(bans.IsBanned);
+        _vm.SetRunInfo(bans.IsBanned, new HashSet<string>());
         _vm.LoadLineups([
             new() { Id = "a", Slots = [new() { OperatorName = "角峰" }], EarlySlots = [new() { OperatorName = "灰喉" }],
                 MidSlots = [new() { OperatorName = "灰喉" }], SupportSlots = [new() { OperatorName = "灰喉" }] },
             new() { Id = "b", Slots = [new() { OperatorName = "灰喉" }] }
         ]);
         bans.SetBans(["灰喉"]);
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.Available;
         _vm.VisibleLineups.Select(l => l.Id).Should().Equal("a");
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.Unavailable;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.Pending;
         _vm.VisibleLineups.Select(l => l.Id).Should().Equal("b");
         bans.ClearBans();
         _vm.RefreshAvailability();
         _vm.VisibleLineups.Should().BeEmpty();
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.Available;
         _vm.VisibleLineups.Should().HaveCount(2);
     }
 
@@ -47,9 +47,9 @@ public sealed class LineupListTests : IDisposable
     {
         var op = new Operator { Name = "霍尔海雅", AdditionalCovenants = ["精准", "奥术"] };
         var bans = new HashSet<string> { "精准" };
-        _vm.SetBanChecker(name => name == op.Name && CovenantBanRules.IsExcluded(op, bans));
+        _vm.SetRunInfo(name => name == op.Name && CovenantBanRules.IsExcluded(op, bans), bans);
         _vm.LoadLineups([new() { Slots = [new() { OperatorName = op.Name }] }]);
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.Available;
         _vm.VisibleLineups.Should().ContainSingle();
         bans.Add("奥术");
         _vm.RefreshAvailability();
@@ -82,15 +82,15 @@ public sealed class LineupListTests : IDisposable
         var first = new Lineup { Id = "a", Slots = [new() { OperatorName = "可用" }] };
         var hidden = new Lineup { Id = "hidden", Slots = [new() { OperatorName = "禁用" }] };
         var last = new Lineup { Id = "b", Slots = [new() { OperatorName = "可用" }] };
-        _vm.SetBanChecker(name => name == "禁用");
+        _vm.SetRunInfo(name => name == "禁用", new HashSet<string>());
         _vm.LoadLineups([first, hidden, last]);
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.Available;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.Available;
         await _vm.MoveAsync(last, -1);
         _vm.Lineups.Select(l => l.Id).Should().Equal("b", "hidden", "a");
         _vm.VisibleLineups.Select(l => l.Id).Should().Equal("b", "a");
         await _vm.MoveAsync(first, 0);
         _vm.Lineups.Select(l => l.Id).Should().Equal("a", "b", "hidden");
-        _vm.SelectedAvailabilityFilter = AvailabilityFilter.All;
+        _vm.SelectedAvailabilityFilter = LineupAvailabilityFilter.All;
         _vm.VisibleLineups.Select(l => l.Id).Should().Equal("a", "b", "hidden");
     }
 

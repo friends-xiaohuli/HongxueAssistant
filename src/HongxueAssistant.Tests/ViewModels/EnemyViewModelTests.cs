@@ -1,4 +1,5 @@
 using HongxueAssistant.Core.Models;
+using HongxueAssistant.Core.Services;
 using HongxueAssistant.Core.ViewModels;
 using FluentAssertions;
 
@@ -7,16 +8,32 @@ namespace HongxueAssistant.Tests.ViewModels;
 public class EnemyViewModelTests
 {
     [Fact]
-    public void BusyStatesDisableRetryUntilBothScansFinish()
+    public void IncompleteCovenantPreviewDoesNotReplaceTheRecordedEnemyAndClearsOnReset()
+    {
+        var vm = new EnemyViewModel();
+        vm.Update(new("假想敌：鳍", ["特训敌人·元素"], []), null, []);
+        vm.ShowInformationPreview(new([new("炎", true, 0)], [new("精准", false, 0)], [], []), "附加尚未读全");
+        vm.InformationPreview.Should().HaveCount(2);
+        vm.InformationPreviewStatus.Should().Be("附加尚未读全");
+        vm.BossName.Should().Be("假想敌：鳍");
+        vm.HasRecordedResult.Should().BeTrue();
+        vm.ClearInformationPreview();
+        vm.InformationPreview.Should().BeEmpty();
+        vm.BossName.Should().Be("假想敌：鳍");
+        vm.ShowInformationPreview(BanCovenantReadResult.Empty, "待确认");
+        vm.Clear();
+        vm.InformationPreviewStatus.Should().BeEmpty();
+        vm.InformationPreview.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void RecognitionFailureEndsBusyState()
     {
         var vm = new EnemyViewModel();
         vm.BeginRecognition();
-        vm.CanRecognize.Should().BeFalse();
-        vm.IsBanAnalysisRunning = true;
+        vm.IsRecognizing.Should().BeTrue();
         vm.RecognitionFailed("未获取到游戏画面");
-        vm.CanRecognize.Should().BeFalse();
-        vm.IsBanAnalysisRunning = false;
-        vm.CanRecognize.Should().BeTrue();
+        vm.IsRecognizing.Should().BeFalse();
         vm.RecognitionStatus.Should().Be("未获取到游戏画面");
     }
 
@@ -49,7 +66,6 @@ public class EnemyViewModelTests
         vm.BossDescription.Should().Be("旧资料");
         vm.EnemyTypeDetails.Should().ContainSingle();
         vm.UnmatchedEntries.Should().BeEmpty();
-        vm.CanRecognize.Should().BeTrue();
     }
 
     [Fact]
@@ -63,7 +79,6 @@ public class EnemyViewModelTests
         vm.RawTexts.Should().Contain("未知首领");
         vm.UnmatchedEntries.Should().HaveCount(2);
         vm.IsRecognizing.Should().BeFalse();
-        vm.CanRecognize.Should().BeTrue();
     }
 
     [Fact]

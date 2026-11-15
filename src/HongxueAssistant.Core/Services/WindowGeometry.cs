@@ -6,36 +6,6 @@ namespace HongxueAssistant.Core.Services;
 
 public static class WindowGeometry
 {
-    public const double SnapDistanceDip = 12;
-
-    /// <summary>Gently aligns a released drag with a nearby screen/game edge, preserving size.</summary>
-    public static RECT SnapBounds(RECT bounds, RECT workArea, double dpiScale, RECT? game = null)
-    {
-        var distance = Math.Max(1, (int)Math.Round(SnapDistanceDip * dpiScale));
-        var horizontal = new List<int> { workArea.Left - bounds.Left, workArea.Right - bounds.Right };
-        var vertical = new List<int> { workArea.Top - bounds.Top, workArea.Bottom - bounds.Bottom };
-        if (game is { Width: > 0, Height: > 0 } target)
-        {
-            // Parallel edges only attract when their projections overlap or almost touch.
-            // An unrelated game window far above/below must not move the panel sideways.
-            if (bounds.Bottom >= target.Top - distance && bounds.Top <= target.Bottom + distance)
-                horizontal.AddRange([target.Left - bounds.Left, target.Right - bounds.Right,
-                    target.Right - bounds.Left, target.Left - bounds.Right]);
-            if (bounds.Right >= target.Left - distance && bounds.Left <= target.Right + distance)
-                vertical.AddRange([target.Top - bounds.Top, target.Bottom - bounds.Bottom,
-                    target.Bottom - bounds.Top, target.Top - bounds.Bottom]);
-        }
-        var dx = horizontal.Where(d => Math.Abs(d) <= distance
-                && bounds.Left + d >= workArea.Left && bounds.Right + d <= workArea.Right)
-            .OrderBy(d => Math.Abs(d)).FirstOrDefault();
-        var dy = vertical.Where(d => Math.Abs(d) <= distance
-                && bounds.Top + d >= workArea.Top && bounds.Bottom + d <= workArea.Bottom)
-            .OrderBy(d => Math.Abs(d)).FirstOrDefault();
-        return new RECT { Left = bounds.Left + dx, Right = bounds.Right + dx,
-            Top = bounds.Top + dy, Bottom = bounds.Bottom + dy };
-    }
-
-
     public static bool IsSupportedGameAspectRatio(int width, int height)
         => width > 0 && height > 0 && Math.Abs(width - height * 16.0 / 9) <= 2;
 
@@ -72,6 +42,26 @@ public static class WindowGeometry
         var left = Math.Clamp(bounds.Left, workArea.Left, workArea.Right - width);
         var top = Math.Clamp(bounds.Top, workArea.Top, workArea.Bottom - height);
         return new RECT { Left = left, Top = top, Right = left + width, Bottom = top + height };
+    }
+
+    public static RECT SnapBounds(RECT bounds, RECT workArea, double dpiScale, RECT? game = null)
+    {
+        var x = new List<int> { workArea.Left, workArea.Right - bounds.Width };
+        var y = new List<int> { workArea.Top, workArea.Bottom - bounds.Height };
+        if (game is { } g)
+        {
+            if (bounds.Bottom > g.Top && bounds.Top < g.Bottom)
+                x.AddRange([g.Left - bounds.Width, g.Left, g.Right - bounds.Width, g.Right]);
+            if (bounds.Right > g.Left && bounds.Left < g.Right)
+                y.AddRange([g.Top - bounds.Height, g.Top, g.Bottom - bounds.Height, g.Bottom]);
+        }
+        var left = x.Where(p => p >= workArea.Left && p + bounds.Width <= workArea.Right
+                && Math.Abs(p - bounds.Left) <= 12 * dpiScale)
+            .OrderBy(p => Math.Abs(p - bounds.Left)).Cast<int?>().FirstOrDefault() ?? bounds.Left;
+        var top = y.Where(p => p >= workArea.Top && p + bounds.Height <= workArea.Bottom
+                && Math.Abs(p - bounds.Top) <= 12 * dpiScale)
+            .OrderBy(p => Math.Abs(p - bounds.Top)).Cast<int?>().FirstOrDefault() ?? bounds.Top;
+        return ClampBounds(new RECT { Left = left, Top = top, Right = left + bounds.Width, Bottom = top + bounds.Height }, workArea);
     }
 
     public static SidePanelOffset CaptureFollowOffset(RECT game, SidePanelPlacement placement, double dpiScale)

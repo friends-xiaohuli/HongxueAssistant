@@ -16,29 +16,21 @@ from fetch_spdatabase import TORAPPU_ENDPOINT, SP_CHAR_REDIRECT
 from build_operator_profiles import PROFESSION, HEALER_SUBPROFESSIONS
 
 
-def build_catalogue(chars: dict, season: dict, bonds: dict, subprofessions: dict, ranges: dict) -> tuple[list, dict]:
-    preset = {entry["charId"] for entry in season["charShopChessDatas"].values()
-              if entry["chessType"] != "DIY" and not entry["isHidden"]}
-    system = set(season["constData"]["systemCustomChar"])
+def build_catalogue(chars: dict, official_chars: list, subprofessions: dict, ranges: dict) -> tuple[list, dict]:
+    selected = {entry["charId"]: entry for entry in official_chars if entry["isDiyChar"]}
+    missing = selected.keys() - chars.keys()
+    if missing:
+        raise ValueError(f"PRTS character table is missing official custom operators: {sorted(missing)}")
     operators, profiles, used_ranges = [], {}, set()
     for char_id, char in chars.items():
-        if not char_id.startswith("char_") or char_id in preset:
+        if char_id not in selected:
             continue
-        if char_id not in system and (char["rarity"] != "TIER_6" or char["isNotObtainable"]):
-            continue
-        powers = {char[key] for key in ("nationId", "groupId", "teamId") if char[key] is not None}
-        if char["subPower"] is not None:
-            for power in char["subPower"]:
-                powers.update(value for value in power.values() if value is not None)
-        own = [bond for bond_id, bond in bonds.items() if bond_id in season["bondInfoDict"]
-               and bond["isPower"] and powers.intersection(bond["powerIdList"])]
-        if not own:
-            own = [bonds[season["constData"]["fallbackBondId"]]]
+        entry = selected[char_id]
         name = SP_CHAR_REDIRECT.get(char_id, char["name"])
         operators.append({"name": name, "sourceCharId": char_id, "isCustom": True, "tier": 5,
                           "iconPath": f"icons/operators/{name}.png",
-                          "coreCovenants": [b["name"] for b in own if b["bondType"] == "SEASON"],
-                          "additionalCovenants": [b["name"] for b in own if b["bondType"] == "REGULAR"],
+                          "coreCovenants": [b["name"] for b in entry["bonds"] if b["bondType"] == 1],
+                          "additionalCovenants": [b["name"] for b in entry["bonds"] if b["bondType"] == 2],
                           "normal": {"traits": []}, "elite": {"traits": []}})
         phase = char["phases"][2]
         range_id = phase["rangeId"]
@@ -64,14 +56,18 @@ def build_catalogue(chars: dict, season: dict, bonds: dict, subprofessions: dict
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gamedata", type=Path, required=True)
+    parser.add_argument("--official-resource", type=Path, required=True,
+                        help="Saved response from the official garrison/guide/resource endpoint")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--skip-icons", action="store_true")
     args = parser.parse_args()
     tables = {name: json.loads((args.gamedata / f"{name}.json").read_text(encoding="utf-8-sig"))
-              for name in ("activity_table", "character_table", "uniequip_table", "range_table")}
-    activity = tables["activity_table"]
-    operators, profiles = build_catalogue(tables["character_table"], activity["activity"]["AUTOCHESS"]["act3autochess"]["V3_1"],
-                                         activity["autoChessData"]["bondInfoDict"],
+              for name in ("character_table", "uniequip_table", "range_table")}
+    resource = json.loads(args.official_resource.read_text(encoding="utf-8-sig"))
+    if resource["code"] != 0 or (resource["data"]["versionInfo"]["seasonId"],
+                                resource["data"]["versionInfo"]["versionId"]) != ("act3autochess", "V3_1"):
+        raise ValueError("Official resource must be a successful act3autochess/V3_1 response")
+    operators, profiles = build_catalogue(tables["character_table"], resource["data"]["chars"],
                                          tables["uniequip_table"]["subProfDict"], tables["range_table"])
     args.output.mkdir(parents=True, exist_ok=True)
     if not args.skip_icons:
@@ -86,7 +82,9 @@ def main() -> None:
             (icons / f"{op['name']}.png").write_bytes(content)
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(download, operators))
-    notice = {"source": f"{TORAPPU_ENDPOINT}/gamedata/latest/excel/", "season": "act3autochess/V3_1",
+    notice = {"source": f"{TORAPPU_ENDPOINT}/gamedata/latest/excel/",
+              "covenantSource": "https://zonai.skland.com/web/v1/game/garrison/guide/resource",
+              "season": "act3autochess/V3_1",
               "notice": "PRTS 原始游戏数据；自选干员无特质，技能和模组由游戏内配置决定；Ⅴ/Ⅵ阶合并为一个候选。"}
     (args.output / "custom_operators.json").write_text(
         json.dumps({**notice, "operators": operators}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

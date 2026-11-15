@@ -96,8 +96,8 @@ internal static class SklandImportViewTests
             for (var i = 0; i < 11; i++)
             {
                 var card = (FrameworkElement)host.Items[0];
-                Descendants<Button>(card).Single(button => Equals(button.ToolTip, "清空该位置"))
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                card.ContextMenu!.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "移出阵容"))
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             }
             host.Items.Count.Should().Be(9);
             ((Button)chooser.FindName("SaveButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -276,8 +276,8 @@ internal static class SklandImportViewTests
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 var host = (ItemsControl)editor.FindName("SlotsHost");
                 var firstCard = (FrameworkElement)host.Items[0];
-                Descendants<Button>(firstCard).Single(button => Equals(button.ToolTip, "清空该位置"))
-                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                firstCard.ContextMenu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, "移出阵容"))
+                    .RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                 vm.FilledRoundCount(0).Should().Be(0);
                 vm.FilledRoundCount(3).Should().Be(2);
                 vm.FilledCount(LineupPhase.后期).Should().Be(1);

@@ -1,3 +1,4 @@
+// Modified for HongxueAssistant on 2026-11-16; see NOTICE.
 using System.Text.Json.Serialization;
 
 namespace HongxueAssistant.Core.Models;
@@ -54,6 +55,7 @@ public sealed class LineupRoundStage
     {
         OperatorName = slot.OperatorName ?? "", TransformedCovenant = slot.TransformedCovenant,
         IsElite = slot.IsElite, Equipments = [.. (slot.Equipments ?? [])],
-        CoreEquipments = [.. (slot.CoreEquipments ?? [])], Tags = [.. (slot.Tags ?? [])]
+        CoreEquipments = [.. (slot.CoreEquipments ?? [])],
+        CandidateEquipments = [.. (slot.CandidateEquipments ?? []).Where(c => c is not null).Select(c => c.Clone())], Tags = [.. (slot.Tags ?? [])]
     };
 }

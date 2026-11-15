@@ -128,6 +128,41 @@
     "迅捷"
    ]
   },
+  "“暴躁铁皮”": {
+   "profession": "重装",
+   "subProfession": "不屈者",
+   "position": "近战",
+   "blockCount": 3,
+   "normalSkill": {
+    "name": "大丑的愤怒",
+    "description": "攻击间隔缩短，攻击力+160%，生命力+60%，技能期间免疫异常状态并同时攻击敌方与我方",
+    "spCost": 21,
+    "initSp": 5,
+    "duration": 20.0,
+    "spType": "攻击回复"
+   },
+   "eliteSkill": {
+    "name": "大丑的愤怒",
+    "description": "攻击间隔缩短，攻击力+190%，生命力+75%，技能期间免疫异常状态并同时攻击敌方与我方",
+    "spCost": 18,
+    "initSp": 10,
+    "duration": 20.0,
+    "spType": "攻击回复"
+   },
+   "normalRange": {
+    "base": "1-1",
+    "skill": null
+   },
+   "eliteRange": {
+    "base": "1-1",
+    "skill": null
+   },
+   "roles": [
+    "盾位"
+   ],
+   "stack": null,
+   "consumes": []
+  },
   "乌啾": {
    "profession": "医疗",
    "subProfession": "链愈师",
@@ -3481,6 +3516,39 @@
    },
    "eliteRange": {
     "base": "1-1",
+    "skill": null
+   },
+   "roles": [],
+   "stack": null,
+   "consumes": []
+  },
+  "盟约·辅助干员": {
+   "profession": "辅助",
+   "subProfession": "巫役",
+   "position": "远程",
+   "blockCount": 1,
+   "normalSkill": {
+    "name": "战术咏唱·双型",
+    "description": "攻击速度+70，同时攻击2个目标",
+    "spCost": 20,
+    "initSp": 9,
+    "duration": 30.0,
+    "spType": "攻击回复"
+   },
+   "eliteSkill": {
+    "name": "战术咏唱·双型",
+    "description": "攻击速度+80，同时攻击2个目标",
+    "spCost": 17,
+    "initSp": 10,
+    "duration": 30.0,
+    "spType": "攻击回复"
+   },
+   "normalRange": {
+    "base": "y-2",
+    "skill": null
+   },
+   "eliteRange": {
+    "base": "y-2",
     "skill": null
    },
    "roles": [],

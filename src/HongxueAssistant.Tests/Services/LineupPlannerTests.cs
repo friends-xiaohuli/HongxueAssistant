@@ -264,12 +264,12 @@ public class LineupPlannerTests
 
         planner.IsExcludedByBans(operators[0], banned).Should().BeTrue();
         planner.IsExcludedByBans(operators[1], banned).Should().BeTrue();
-        planner.IsExcludedByBans(operators[2], banned).Should().BeFalse();
+        planner.IsExcludedByBans(operators[2], banned).Should().BeTrue();
         planner.IsExcludedByBans(operators[4], banned).Should().BeFalse();
     }
 
     [Fact]
-    public void CovenantBans_RemoveOperatorsWhoseCovenantsAreAllBanned()
+    public void CovenantBans_PrioritizeCoreAndKeepTheAdditionalOnlyRule()
     {
         // 霍尔海雅: 奥术 + 精准, no core covenant.
         var hoederer = new Operator { Name = "霍尔海雅", AdditionalCovenants = ["奥术", "精准"] };
@@ -279,9 +279,10 @@ public class LineupPlannerTests
         var harold = new Operator { Name = "哈洛德", CoreCovenants = ["维多利亚", "谢拉格"] };
         CovenantBanRules.IsExcluded(harold, new HashSet<string> { "维多利亚" }).Should().BeFalse();
         CovenantBanRules.IsExcluded(harold, new HashSet<string> { "维多利亚", "谢拉格" }).Should().BeTrue();
-        // Three covenants: one left unbanned keeps the operator.
+        // The core covenant controls availability even while additional covenants remain available.
         var eyja = new Operator { Name = "纯烬艾雅法拉", CoreCovenants = ["莱塔尼亚"], AdditionalCovenants = ["聚合", "远见"] };
-        CovenantBanRules.IsExcluded(eyja, new HashSet<string> { "莱塔尼亚", "聚合" }).Should().BeFalse();
+        CovenantBanRules.IsExcluded(eyja, new HashSet<string> { "莱塔尼亚" }).Should().BeTrue();
+        CovenantBanRules.IsExcluded(eyja, new HashSet<string> { "莱塔尼亚", "聚合" }).Should().BeTrue();
         CovenantBanRules.IsExcluded(eyja, new HashSet<string> { "莱塔尼亚", "聚合", "远见" }).Should().BeTrue();
     }
 

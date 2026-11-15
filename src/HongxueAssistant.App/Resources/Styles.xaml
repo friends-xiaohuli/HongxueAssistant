@@ -7,6 +7,7 @@
     <!-- Clickable-control baseline: only interactive controls get hand cursor -->
     <!-- Line icons (24×24 stroke paths) -->
     <Geometry x:Key="IconOperators">M 12 12 A 4 4 0 1 0 12 4 A 4 4 0 1 0 12 12 Z M 4.5 20 C 5.9 16.6 8.8 15 12 15 C 15.2 15 18.1 16.6 19.5 20</Geometry>
+    <Geometry x:Key="IconCodex">M 12 6.5 C 10.2 5.2 7.6 4.5 4 4.5 L 4 18.5 C 7.6 18.5 10.2 19.2 12 20.5 C 13.8 19.2 16.4 18.5 20 18.5 L 20 4.5 C 16.4 4.5 13.8 5.2 12 6.5 Z M 12 6.5 L 12 20.5</Geometry>
     <Geometry x:Key="IconEquipment">M 12 3 L 19 6 L 19 11 C 19 15.8 15.8 19.3 12 21 C 8.2 19.3 5 15.8 5 11 L 5 6 Z</Geometry>
     <Geometry x:Key="IconTracking">M 12 3 L 12 6.5 M 12 17.5 L 12 21 M 3 12 L 6.5 12 M 17.5 12 L 21 12 M 12 7.5 A 4.5 4.5 0 1 0 12 16.5 A 4.5 4.5 0 1 0 12 7.5 Z</Geometry>
     <Geometry x:Key="IconLineups">M 4.5 4.5 L 10.5 4.5 L 10.5 10.5 L 4.5 10.5 Z M 13.5 4.5 L 19.5 4.5 L 19.5 10.5 L 13.5 10.5 Z M 4.5 13.5 L 10.5 13.5 L 10.5 19.5 L 4.5 19.5 Z M 13.5 13.5 L 19.5 13.5 L 19.5 19.5 L 13.5 19.5 Z</Geometry>
@@ -1166,7 +1167,7 @@
     <!-- ── Stock controls in theme colors ─────────────────────────────────── -->
     <Style TargetType="ToolTip">
         <Setter Property="Background" Value="{DynamicResource ToastBackgroundBrush}" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TitleTextBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,5" />
@@ -1219,16 +1220,31 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="MenuItem">
-                    <Border x:Name="bg" Background="Transparent" CornerRadius="{DynamicResource RowCornerRadius}" Padding="10,5" MinWidth="120">
-                        <DockPanel>
-                            <!-- tick for checkable items (e.g. 只看本局盟约) -->
-                            <Path x:Name="check" DockPanel.Dock="Right" Width="10" Height="8" Margin="12,0,0,0" VerticalAlignment="Center"
-                                  Stretch="Uniform" Data="M 2.5 7 L 5.5 10 L 11 3.5" StrokeThickness="1.8" Visibility="Collapsed"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{DynamicResource AccentBrush}" />
-                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
-                        </DockPanel>
-                    </Border>
+                    <Grid>
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="{DynamicResource RowCornerRadius}" Padding="10,5" MinWidth="120">
+                            <DockPanel>
+                                <Path x:Name="submenuArrow" DockPanel.Dock="Right" Width="4" Height="8" Margin="12,0,0,0" VerticalAlignment="Center"
+                                      Data="M 0 0 L 4 4 L 0 8" StrokeThickness="1.4" Visibility="Collapsed"
+                                      Stroke="{TemplateBinding Foreground}" />
+                                <!-- tick for checkable items (e.g. 只看本局盟约) -->
+                                <Path x:Name="check" DockPanel.Dock="Right" Width="10" Height="8" Margin="12,0,0,0" VerticalAlignment="Center"
+                                      Stretch="Uniform" Data="M 2.5 7 L 5.5 10 L 11 3.5" StrokeThickness="1.8" Visibility="Collapsed"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Stroke="{DynamicResource AccentBrush}" />
+                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
+                            </DockPanel>
+                        </Border>
+                        <Popup x:Name="PART_Popup" Placement="Right" HorizontalOffset="-1" AllowsTransparency="True" Focusable="False"
+                               PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" IsOpen="{TemplateBinding IsSubmenuOpen}">
+                            <Border Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="{DynamicResource RowCornerRadius}" Padding="3">
+                                <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            </Border>
+                        </Popup>
+                    </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="HasItems" Value="True">
+                            <Setter TargetName="submenuArrow" Property="Visibility" Value="Visible" />
+                        </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="check" Property="Visibility" Value="Visible" />
                         </Trigger>
@@ -1362,6 +1378,85 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- Filter chip that fills a grid cell (pickers' filter rails): name centred, no count; IsBlocked = dashed, disabled -->
+    <Style x:Key="GridChipToggle" TargetType="ToggleButton" BasedOn="{StaticResource ClickableToggleButtonBase}">
+        <Setter Property="IsChecked" Value="{Binding IsSelected, Mode=TwoWay}" />
+        <Setter Property="IsEnabled" Value="{Binding IsBlocked, Converter={StaticResource FilterNotConverter}}" />
+        <Setter Property="ToolTip" Value="{Binding Label}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Margin" Value="0,0,4,4" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Grid Height="28">
+                        <Rectangle x:Name="frame" RadiusX="{DynamicResource RowRadiusValue}" RadiusY="{DynamicResource RowRadiusValue}" StrokeThickness="1"
+                                   Stroke="{DynamicResource LineBrush}" Fill="{DynamicResource CardBackgroundBrush}" />
+                        <TextBlock x:Name="label" Text="{Binding Label}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="4,0" Foreground="{TemplateBinding Foreground}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentBorderBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="frame" Property="Fill" Value="{DynamicResource AccentSolidBrush}" />
+                            <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource AccentSolidBrush}" />
+                            <Setter TargetName="label" Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                            <Setter TargetName="label" Property="FontWeight" Value="Bold" />
+                        </Trigger>
+                        <DataTrigger Binding="{Binding IsBlocked}" Value="True">
+                            <Setter TargetName="frame" Property="Fill" Value="Transparent" />
+                            <Setter TargetName="frame" Property="StrokeDashArray" Value="3 2" />
+                            <Setter TargetName="frame" Property="Stroke" Value="{DynamicResource BorderBrush}" />
+                            <Setter TargetName="label" Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                            <Setter TargetName="label" Property="Opacity" Value="0.6" />
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Picker search box: magnifier + placeholder (Tag) -->
+    <Style x:Key="PickerSearchBox" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="box" Background="{DynamicResource InputBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="{DynamicResource RowCornerRadius}" Padding="9,0">
+                        <DockPanel>
+                            <Viewbox DockPanel.Dock="Left" Width="13" Height="13" Margin="0,0,7,0" VerticalAlignment="Center">
+                                <Canvas Width="24" Height="24">
+                                    <Path Data="{StaticResource IconSearch}" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Canvas>
+                            </Viewbox>
+                            <Grid>
+                                <TextBlock x:Name="hint" Text="{TemplateBinding Tag}" FontSize="12" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Visibility="Collapsed" />
+                                <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" />
+                            </Grid>
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="hint" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="box" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

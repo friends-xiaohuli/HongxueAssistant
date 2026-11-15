@@ -221,6 +221,12 @@ internal static class TrackingWorkflowViewTests
         filters.SelectedIndex = 2;
         Layout(view, 280);
         equipments.Items.Cast<object>().Should().ContainSingle();
+        pages.SelectedIndex = 1;
+        Layout(view, 280);
+        var initialPool = (StackPanel)view.DeployPage.FindName("PoolGroups");
+        var initialExtension = Descendants<Button>(initialPool).Single(b => b.Content is string text && text.Contains("扩展池"));
+        initialExtension.Content!.ToString().Should().StartWith("▾");
+        initialExtension.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         foreach (var theme in Enum.GetValues<GameShopTheme>())
         foreach (var night in new[] { false, true })
         foreach (var width in new[] { 280, 310, 400 })

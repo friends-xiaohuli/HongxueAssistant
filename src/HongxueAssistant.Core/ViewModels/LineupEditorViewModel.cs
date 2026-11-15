@@ -1,4 +1,5 @@
-// Modified for ASP Assistant Arknights on 2026-11-12; see NOTICE.
+// Modified for HongxueAssistant on 2026-11-16; see NOTICE.
+// Modified for ASP Assistant Arknights on 2026-11-13; see NOTICE.
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using HongxueAssistant.Core.Models;
@@ -18,6 +19,7 @@ public partial class LineupEditorViewModel : ObservableObject
 
     private readonly CovenantCalculator _calculator;
     private readonly string _initialName;
+    private readonly List<TargetCovenant> _initialTargets;
     private readonly Dictionary<LineupPhase, List<LineupSlot>> _initialSlots;
     private readonly Dictionary<LineupPhase, ObservableCollection<LineupSlot>> _phaseSlots = [];
     private readonly LineupPhase _initialPhase;
@@ -53,7 +55,9 @@ public partial class LineupEditorViewModel : ObservableObject
                 {
                     var op = AllOperators.FirstOrDefault(o => o.Name == slot.OperatorName);
                     if (op is not null && !CanSelectOperator(op))
-                        return $"{phase}的{slot.OperatorName}需要在策略中添加森蚺的“暴躁铁皮”策略";
+                        return op.RequiredStrategyId == PlannerStrategies.PithId
+                            ? $"{phase}的{slot.OperatorName}需要在策略中添加Pith的“优等生”策略"
+                            : $"{phase}的{slot.OperatorName}需要在策略中添加森蚺的“暴躁铁皮”策略";
                     if (!string.IsNullOrEmpty(slot.TransformedCovenant))
                         return $"{slot.OperatorName}的旧转职“{slot.TransformedCovenant}”没有对应装备，请重新选择或清除";
                     if (slot.Equipments.Count > LineupEquipmentService.Capacity(slot))
@@ -148,6 +152,11 @@ public partial class LineupEditorViewModel : ObservableObject
         _initialSlots = _phaseSlots.ToDictionary(pair => pair.Key, pair => pair.Value.Select(CloneSlot).ToList());
         _initialRoundStages = _roundStages.Select((_, index) => ExportRoundStage(index)).ToList();
         _initialPhase = source is null ? LineupPhase.前期 : LineupPhase.后期;
+        // Lineups saved before target covenants existed get them from their late-game slots.
+        TargetCovenants = [.. source is null ? [] : source.TargetCovenants.Count > 0
+            ? source.TargetCovenants.Select(t => t.Clone())
+            : LineupTargets.Derive(new Lineup { Slots = ExportPhase(LineupPhase.后期) }, calculator)];
+        _initialTargets = [.. TargetCovenants.Select(t => t.Clone())];
         SelectPhase(_initialPhase);
     }
 
@@ -207,6 +216,61 @@ public partial class LineupEditorViewModel : ObservableObject
             yield return (_roundStages[index].DisplayTitle, _roundStageSlots[index]);
     }
 
+    // ── 目标盟约 ──────────────────────────────────────────────────────────
+
+    /// <summary>What this lineup is built to reach (core first); 本局推荐 and the 筛选 work from these.</summary>
+    public List<TargetCovenant> TargetCovenants { get; private set; }
+
+    /// <summary>Each target against the current late-game slots: 已满足 or how many people are missing.</summary>
+    public IReadOnlyList<TargetState> TargetStates => TargetCovenants.Count == 0 ? []
+        : LineupTargets.States(new Lineup { Slots = ExportPhase(LineupPhase.后期), TargetCovenants = TargetCovenants },
+            _calculator, _ => false, new HashSet<string>());
+
+    public IReadOnlyList<CovenantInfo> AllCovenants => _calculator.AllCovenants;
+
+    /// <summary>People per covenant in the current phase with place <paramref name="slotIndex"/> holding <paramref name="operatorName"/> ("" = empty).</summary>
+    public IReadOnlyDictionary<string, int> CountsWith(int slotIndex, string operatorName)
+    {
+        var replacement = CloneSlot(Slots[slotIndex]);
+        replacement.OperatorName = operatorName;
+        var slots = Slots.Select((s, i) => i == slotIndex ? replacement : s)
+            .Where(s => s.OperatorName.Length > 0).ToList();
+        return _calculator.Compute(new Lineup { Slots = slots }).ToDictionary(s => s.Name, s => s.Count, StringComparer.Ordinal);
+    }
+
+    /// <summary>People per covenant in the late-game slots.</summary>
+    public IReadOnlyDictionary<string, int> ComputeLate()
+        => _calculator.Compute(new Lineup { Slots = ExportPhase(LineupPhase.后期) }).ToDictionary(s => s.Name, s => s.Count, StringComparer.Ordinal);
+
+    /// <summary>Whether a covenant has a second tier (core covenants and the 人数 ones).</summary>
+    public bool HasSecondTier(string covenant)
+        => _calculator.AllCovenants.FirstOrDefault(c => c.Name == covenant) is { } info && LineupPlanner.CreateGoal(info, 2).Level == 2;
+
+    public void AddTarget(string covenant)
+    {
+        if (TargetCovenants.Any(t => t.Name == covenant)) return;
+        TargetCovenants.Add(new TargetCovenant { Name = covenant, Tier = 1 });
+        SortTargets();
+    }
+
+    public void RemoveTarget(string covenant) => TargetCovenants.RemoveAll(t => t.Name == covenant);
+
+    public void SetTargetTier(string covenant, int tier)
+    {
+        if (TargetCovenants.FirstOrDefault(t => t.Name == covenant) is { } target)
+            target.Tier = tier >= 2 && HasSecondTier(covenant) ? 2 : 1;
+    }
+
+    /// <summary>按后期配置填写: the late-game slots' active covenants become the targets.</summary>
+    public void FillTargetsFromLate()
+        => TargetCovenants = LineupTargets.Derive(new Lineup { Slots = ExportPhase(LineupPhase.后期) }, _calculator);
+
+    private void SortTargets()
+    {
+        var order = _calculator.AllCovenants.Select((c, i) => (c, i)).ToDictionary(x => x.c.Name, x => (x.c.BondType == "SEASON" ? 0 : 1000) + x.i);
+        TargetCovenants = [.. TargetCovenants.OrderBy(t => order.GetValueOrDefault(t.Name, int.MaxValue))];
+    }
+
     private static bool IsMech(LineupSlot slot) => slot.OperatorName == LineupEquipmentService.MechName;
 
     /// <summary>Index of the 暴躁铁皮 slot in <see cref="Slots"/> (−1 when there is none).</summary>
@@ -254,7 +318,7 @@ public partial class LineupEditorViewModel : ObservableObject
                 slots.Add(automatic);
                 if (isRound) _automaticRoundMechs.Add(automatic);
             }
-            else if (!HasMechStrategy && mech is not null && mech.Equipments.Count == 0
+            else if (!HasMechStrategy && mech is not null && mech.Equipments.Count == 0 && mech.CandidateEquipments.Count == 0
                 && (!isRound || _automaticRoundMechs.Contains(mech)))
             {
                 slots.Remove(mech);
@@ -287,7 +351,9 @@ public partial class LineupEditorViewModel : ObservableObject
         {
             var op = AllOperators.FirstOrDefault(o => o.Name == operatorName);
             if (op is not null && !CanSelectOperator(op))
-                throw new InvalidOperationException("必须在策略中添加森蚺的“暴躁铁皮”策略");
+                throw new InvalidOperationException(op.RequiredStrategyId == PlannerStrategies.PithId
+                    ? "必须在策略中添加Pith的“优等生”策略"
+                    : "必须在策略中添加森蚺的“暴躁铁皮”策略");
             var slot = Slots[slotIndex];
             slot.OperatorName = operatorName;
             // 触发 ItemsControl 刷新（LineupSlot 是 POCO，集合变更通知更可靠）
@@ -331,9 +397,40 @@ public partial class LineupEditorViewModel : ObservableObject
         var slot = PreviewTransformation(slotIndex, transformationIndex, equipmentName);
         slot.Equipments.RemoveAll(replacedEquipment.Contains);
         slot.CoreEquipments.RemoveAll(e => !slot.Equipments.Contains(e));
+        slot.CandidateEquipments.RemoveAll(c => slot.Equipments.Contains(c.Name));
         if (slot.Equipments.Count > LineupEquipmentService.Capacity(slot))
             throw new InvalidOperationException("装备位不足，请先选择需要替换的装备");
         Slots[slotIndex] = slot;
+        Recalculate();
+    }
+
+    /// <summary>
+    /// Copies a slot (operator, gear, tags) into <paramref name="phase"/>: over the same operator if it is there,
+    /// else into its first empty place. False when the phase is full.
+    /// </summary>
+    public bool CopySlotToPhase(int slotIndex, LineupPhase phase)
+    {
+        if (slotIndex < 0 || slotIndex >= Slots.Count || CurrentRoundStageIndex < 0 && phase == CurrentPhase) return false;
+        var source = Slots[slotIndex];
+        if (string.IsNullOrEmpty(source.OperatorName)) return false;
+        var target = _phaseSlots[phase];
+        var index = target.ToList().FindIndex(s => s.OperatorName == source.OperatorName);
+        if (index < 0) index = target.ToList().FindIndex(s => s.OperatorName.Length == 0);
+        if (index < 0) return false;
+        target[index] = CloneSlot(source);
+        return true;
+    }
+
+    /// <summary>Replaces the strategies, preserving their tags and keeping 9 places.</summary>
+    public void SetStrategies(IEnumerable<LineupStrategySlot> picked)
+    {
+        var selected = picked.Where(s => s.StrategyId.Length > 0).Take(MaxSlots)
+            .Select(s => new LineupStrategySlot { StrategyId = s.StrategyId, Tags = [.. s.Tags] }).ToList();
+        StrategySlots.Clear();
+        foreach (var slot in selected) StrategySlots.Add(slot);
+        while (StrategySlots.Count < MaxSlots) StrategySlots.Add(new LineupStrategySlot());
+        SyncMechSlots();
+        OnPropertyChanged(nameof(HasMechStrategy));
         Recalculate();
     }
 
@@ -362,6 +459,7 @@ public partial class LineupEditorViewModel : ObservableObject
             if (slot.Equipments.Count >= LineupEquipmentService.Capacity(slot))
                 throw new InvalidOperationException("装备位已满，请选择需要替换的装备");
             slot.Equipments.Add(equipName);
+            slot.CandidateEquipments.RemoveAll(c => c.Name == equipName);
         }
         slot.CoreEquipments.RemoveAll(name => !slot.Equipments.Contains(name));
         Slots[slotIndex] = slot;
@@ -384,8 +482,43 @@ public partial class LineupEditorViewModel : ObservableObject
         slot.CoreEquipments.RemoveAll(name => !slot.Equipments.Contains(name) || name == equipmentName);
         if (equipmentName.Length > 0 && isCore)
             slot.CoreEquipments.Add(equipmentName);
+        slot.CandidateEquipments.RemoveAll(c => slot.Equipments.Contains(c.Name));
         Slots[slotIndex] = slot;
         Recalculate();
+    }
+
+    /// <summary>Replaces the candidates (picker result). Pieces already in the equipment slots are dropped.</summary>
+    public void SetSlotCandidates(int slotIndex, IEnumerable<CandidateEquipment> candidates)
+    {
+        var slot = CloneSlot(Slots[slotIndex]);
+        if (string.IsNullOrEmpty(slot.OperatorName)) return;
+        slot.CandidateEquipments = [.. candidates.Where(c => c.Name.Length > 0 && !slot.Equipments.Contains(c.Name))
+            .DistinctBy(c => c.Name).Select(c => c.Clone())];
+        Slots[slotIndex] = slot;
+    }
+
+    public void ToggleCandidatePriority(int slotIndex, string name)
+    {
+        var slot = CloneSlot(Slots[slotIndex]);
+        if (slot.CandidateEquipments.FirstOrDefault(c => c.Name == name) is not { } candidate) return;
+        candidate.IsPriority = !candidate.IsPriority;
+        Slots[slotIndex] = slot;
+    }
+
+    public void RemoveCandidate(int slotIndex, string name)
+    {
+        var slot = CloneSlot(Slots[slotIndex]);
+        if (slot.CandidateEquipments.RemoveAll(c => c.Name == name) == 0) return;
+        Slots[slotIndex] = slot;
+    }
+
+    /// <summary>Moves a candidate into the first free equipment slot; throws when the slots are full.</summary>
+    public void MoveCandidateToSlot(int slotIndex, string name)
+    {
+        var slot = Slots[slotIndex];
+        if (slot.Equipments.Count >= LineupEquipmentService.Capacity(slot))
+            throw new InvalidOperationException("装备位已满，请先移除一件装备");
+        SetSlotEquipment(slotIndex, slot.Equipments.Count, name, isCore: false);
     }
 
     public void Reset()
@@ -407,6 +540,7 @@ public partial class LineupEditorViewModel : ObservableObject
         SyncMechSlots();
         OnPropertyChanged(nameof(RoundStages));
         OnPropertyChanged(nameof(HasRoundStages));
+        TargetCovenants = [.. _initialTargets.Select(t => t.Clone())];
         SelectPhase(_initialPhase);
     }
 
@@ -504,6 +638,7 @@ public partial class LineupEditorViewModel : ObservableObject
         SupportSlots = ExportPhase(LineupPhase.挂件),
         Strategies = [.. StrategySlots.Where(s => s.StrategyId.Length > 0)
             .Select(s => new LineupStrategySlot { StrategyId = s.StrategyId, Tags = [.. s.Tags] })],
+        TargetCovenants = [.. TargetCovenants.Select(t => t.Clone())],
         UpdatedAt = DateTime.UtcNow,
     };
 
@@ -515,12 +650,12 @@ public partial class LineupEditorViewModel : ObservableObject
         StartRound = _roundStages[index].StartRound, EndRound = _roundStages[index].EndRound,
         SourceTabIndex = _roundStages[index].SourceTabIndex,
         Slots = _roundStageSlots[index].Where(slot => !string.IsNullOrEmpty(slot.OperatorName)
-            && (!IsMech(slot) || !_automaticRoundMechs.Contains(slot) || slot.Equipments.Count > 0 || slot.Tags.Count > 0))
+            && (!IsMech(slot) || !_automaticRoundMechs.Contains(slot) || slot.Equipments.Count > 0 || slot.CandidateEquipments.Count > 0 || slot.Tags.Count > 0))
             .Select(CloneSlot).ToList()
     };
 
     private static List<LineupSlot> ExportSlots(IEnumerable<LineupSlot> slots) => [.. slots
-        .Where(slot => !string.IsNullOrEmpty(slot.OperatorName) && (!IsMech(slot) || slot.Equipments.Count > 0 || slot.Tags.Count > 0))
+        .Where(slot => !string.IsNullOrEmpty(slot.OperatorName) && (!IsMech(slot) || slot.Equipments.Count > 0 || slot.CandidateEquipments.Count > 0 || slot.Tags.Count > 0))
         .Select(CloneSlot)];
 
     private static LineupSlot CloneSlot(LineupSlot s) => new()
@@ -530,6 +665,7 @@ public partial class LineupEditorViewModel : ObservableObject
         IsElite = s.IsElite,
         Equipments   = [.. s.Equipments],
         CoreEquipments = [.. s.CoreEquipments],
+        CandidateEquipments = [.. s.CandidateEquipments.Select(c => c.Clone())],
         Tags         = [.. s.Tags],
     };
 }

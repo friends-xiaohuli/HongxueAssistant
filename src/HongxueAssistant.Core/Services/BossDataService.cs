@@ -112,7 +112,7 @@ public sealed class BossDataService
     public bool TryMatchBossFromOcr(IReadOnlyList<string> ocrLines, [NotNullWhen(true)] out string? canonicalName)
     {
         canonicalName = null;
-        var text = new string(string.Concat(ocrLines).Where(char.IsLetterOrDigit).ToArray());
+        var text = new string(string.Concat(ocrLines).Where(char.IsLetterOrDigit).ToArray()).Replace('冑', '胄');
         foreach (var (key, canonical) in _bossOcrMatchPairs)
         {
             var normalized = new string(key.Where(char.IsLetterOrDigit).ToArray());

@@ -5,4 +5,7 @@ namespace HongxueAssistant.Core.Models;
 /// Result of a single "识别本场敌人" pass.
 /// Empty or unknown names are retained so the page can report partial recognition.
 /// </summary>
-public record EnemyResult(string BossName, IReadOnlyList<string> EnemyTypes, IReadOnlyList<string> RawTexts);
+public record EnemyResult(string BossName, IReadOnlyList<string> EnemyTypes, IReadOnlyList<string> RawTexts)
+{
+    public int? RegulationLevel { get; init; }
+}

@@ -56,7 +56,6 @@ internal sealed class AssistantTray : IDisposable
             _hiddenWindows.Add((window, new WindowInteropHelper(window).Handle));
         }
         _panel.IsAssistantHidden = true;
-        _overlay.Hide();
         foreach (var window in _hiddenWindows) ShowWindow(window.Handle, 0);
         VisibilityChanged?.Invoke();
     }

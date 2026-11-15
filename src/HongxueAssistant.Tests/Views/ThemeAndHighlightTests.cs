@@ -29,6 +29,58 @@ namespace HongxueAssistant.Tests.Views;
 [Collection("Update environment")]
 public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
 {
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    public Task StrategySupportSearch_AcrossThemes(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => StrategySupportSearchViewTests.Verify(theme, night), $"StrategySupportSearch-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    public Task AutomaticPurchases_ExperimentalSettingAcrossThemes(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => ExperimentalPurchaseViewTests.Verify(theme, night), $"AutomaticPurchases-{theme}-{night}");
+
+    [Fact]
+    public Task EmulatorFix_PickerScopeAndExcludedPools() => ui.RunAsync(EmulatorFixViewTests.VerifyPicker, nameof(EmulatorFix_PickerScopeAndExcludedPools));
+
+    [Fact]
+    public Task EmulatorFix_OwnedDialogTopmostAndMoveSnap() => ui.RunAsync(EmulatorFixViewTests.VerifyPanel, nameof(EmulatorFix_OwnedDialogTopmostAndMoveSnap));
+
+    [Fact]
+    public Task EmulatorFix_ConnectionLayoutAcrossThemes() => ui.RunAsync(EmulatorFixViewTests.VerifyConnectionLayout, nameof(EmulatorFix_ConnectionLayoutAcrossThemes));
+
+    [Fact]
+    public Task RecognizedEquipment_ShowsAcquiredInShoppingListAndReloads() => ui.RunAsync(EmulatorFixViewTests.VerifyEquipmentPurchase, nameof(RecognizedEquipment_ShowsAcquiredInShoppingListAndReloads));
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    public Task OperatorPicker_InteractionAcrossThemes(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => OperatorPickerPerformanceViewTests.VerifyInteraction(theme, night), $"OperatorPicker-Interaction-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    public Task OperatorPicker_VirtualizesTwoColumns(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => OperatorPickerPerformanceViewTests.VerifyVirtualization(theme, night), $"OperatorPicker-Virtualization-{theme}-{night}");
+
     [Fact]
     public Task LocalWindowAndSuspendedPicks() => ui.RunAsync(LocalWindowCompatibilityTests.Verify, nameof(LocalWindowAndSuspendedPicks));
 
@@ -54,10 +106,320 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
     }
 
     [Fact]
+    public Task ShopEconomy_RendersAndResetsAcrossThemesAndWidths() => ui.RunAsync(() =>
+    {
+        var vm = new TrackingViewModel();
+        var view = new TrackingView { DataContext = vm };
+        var row = (Border)view.FindName("EconomyRow");
+        var round = (TextBlock)view.FindName("EconomyRound");
+        var money = (TextBlock)view.FindName("EconomyMoney");
+        var cost = (TextBlock)view.FindName("EconomyCost");
+        var mode = (TextBlock)view.FindName("EconomyMode");
+        foreach (var theme in Enum.GetValues<GameShopTheme>())
+        foreach (var night in new[] { false, true })
+        foreach (var width in new[] { 280, 360 })
+        {
+            void Layout()
+            {
+                Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                view.Measure(new Size(width, 900));
+                view.Arrange(new Rect(0, 0, width, 900));
+                view.UpdateLayout();
+            }
+            ThemeManager.Apply(theme, night);
+            vm.Economy = null;
+            Layout();
+            row.Visibility.Should().Be(Visibility.Collapsed);
+            vm.Economy = new(99, 999, 999, false, "规程等级20", true);
+            Layout();
+            row.Visibility.Should().Be(Visibility.Visible);
+            round.Text.Should().Be("99");
+            money.Text.Should().Be("999");
+            cost.Text.Should().Be("999");
+            mode.Text.Should().Be("规程等级20");
+            foreach (var text in new[] { round, money, cost, mode })
+                text.DesiredSize.Width.Should().BeLessThanOrEqualTo(text.ActualWidth + 1);
+            var output = Path.Combine(AppContext.BaseDirectory, "TestResults", "shop-economy");
+            Directory.CreateDirectory(output);
+            var bitmap = new RenderTargetBitmap(width, 900, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(view);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var file = File.Create(Path.Combine(output, $"{theme}-{night}-{width}.png"))) encoder.Save(file);
+            vm.Economy = new(1, null, null, true, "标准模拟", true);
+            Layout();
+            money.Text.Should().Be("–");
+            cost.Text.Should().Be("满级");
+            mode.Text.Should().Be("标准模拟");
+            vm.Economy = null;
+            Layout();
+            row.Visibility.Should().Be(Visibility.Collapsed);
+        }
+    }, nameof(ShopEconomy_RendersAndResetsAcrossThemesAndWidths));
+
+    [Fact]
+    public Task EnemyHp_FocusesRecognizedDifficulty() => ui.RunAsync(() =>
+    {
+        var bosses = new BossDataService();
+        bosses.LoadAsync(Path.Combine(AppContext.BaseDirectory, "TestData", "Regulation")).GetAwaiter().GetResult();
+        var boss = bosses.Lookup("假想敌：胄")!;
+        var vm = new EnemyViewModel();
+        vm.Update(new(boss.Name, ["特训敌人·元素"], []), boss, [new() { TypeName = "元素" }]);
+        var view = new EnemyView { DataContext = vm };
+        var current = (Border)view.FindName("CurrentBossHpCard");
+        var currentText = (TextBlock)view.FindName("CurrentBossHpText");
+        var other = (Expander)view.FindName("OtherBossHpExpander");
+        var items = (ItemsControl)view.FindName("SingleBossHpItems");
+        foreach (var theme in Enum.GetValues<GameShopTheme>())
+        foreach (var night in new[] { false, true })
+        foreach (var width in new[] { 280, 360 })
+        {
+            void Layout()
+            {
+                Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                view.Measure(new Size(width, 1400));
+                view.Arrange(new Rect(0, 0, width, 1400));
+                view.UpdateLayout();
+            }
+            ThemeManager.Apply(theme, night);
+            vm.RegulationLevel = null;
+            Layout();
+            current.Visibility.Should().Be(Visibility.Collapsed);
+            other.IsExpanded.Should().BeTrue();
+            items.Items.Count.Should().Be(21);
+            vm.RegulationLevel = 7;
+            Layout();
+            current.Visibility.Should().Be(Visibility.Visible);
+            currentText.Text.Should().Be(BossHpCell.From(boss.Hp.Single(hp => hp.Mode == "mode_single_7")).Hp);
+            other.IsExpanded.Should().BeFalse();
+            other.Header.Should().Be("其他难度血量");
+            items.Items.Count.Should().Be(20);
+            var output = Path.Combine(AppContext.BaseDirectory, "TestResults", "boss-hp-focus");
+            Directory.CreateDirectory(output);
+            var bitmap = new RenderTargetBitmap(width, 1400, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(view);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var file = File.Create(Path.Combine(output, $"{theme}-{night}-{width}.png"))) encoder.Save(file);
+            other.IsExpanded = true;
+            vm.OtherBossHpExpanded.Should().BeTrue();
+            vm.RegulationLevel = 8;
+            Layout();
+            other.IsExpanded.Should().BeFalse();
+            currentText.Text.Should().Be(BossHpCell.From(boss.Hp.Single(hp => hp.Mode == "mode_single_8")).Hp);
+        }
+    }, nameof(EnemyHp_FocusesRecognizedDifficulty));
+
+    [Fact]
     public Task OperatorPicker_PreservesSelectionWhileScrolling() => ui.RunAsync(OperatorPickerTests.VerifySelection, nameof(OperatorPicker_PreservesSelectionWhileScrolling));
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task PlannerChrome_HasReadableContrast(GameShopTheme theme, bool night) => ui.RunAsync(() =>
+    {
+        var data = new JsonDataStore(Path.Combine(AppContext.BaseDirectory, "TestData", "Regulation"));
+        var operators = data.LoadOperatorsAsync().GetAwaiter().GetResult();
+        var (equipment, _) = data.LoadEquipmentAsync().GetAwaiter().GetResult();
+        var (covenants, map) = data.LoadCovenantsAsync().GetAwaiter().GetResult();
+        var calculator = new CovenantCalculator(operators, covenants, map);
+        var folder = Path.Combine(Path.GetTempPath(), "planner-contrast-" + Guid.NewGuid().ToString("N"));
+        var panel = new SidePanelWindow(new OperatorBrowseViewModel(), new EquipmentBrowseViewModel(),
+            new TrackingViewModel(), new GameStateViewModel(), new BanViewModel(), new EnemyViewModel(),
+            new LineupViewModel(new LineupStore(Path.Combine(folder, "lineups"), calculator.EquipmentRules), calculator),
+            new LineupShareService(calculator.EquipmentRules, Path.Combine(folder, "share")), operators, equipment, [],
+            new SettingsManager(folder), theme, new SidePanelPositionSettings { FreeMovement = true }, covenants: covenants)
+        { Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000, Height = 1000 };
+        panel.Show();
+        ThemeManager.Apply(theme, night);
+        ((TabControl)panel.FindName("MainTabs")).SelectedItem = panel.FindName("LineupsTab");
+        ((ListBox)panel.FindName("LineupsSegment")).SelectedIndex = 1;
+        panel.PlannerVm.IsActive = false;
+        panel.PlannerVm.AllCovenants.Single(c => c.Name == "乌萨斯").Level = 2;
+        panel.PlannerVm.AllCovenants.Single(c => c.Name == "奥术").Level = 2;
+        panel.PlannerVm.StatusText = "计算完成";
+        panel.PlannerVm.StatusDetail = "0.0 秒 · 改动后自动重算";
+        var view = (LineupPlannerView)panel.FindName("PlannerView");
+        var output = Path.Combine(AppContext.BaseDirectory, "TestResults", "planner-chrome-contrast");
+        Directory.CreateDirectory(output);
+        using var assertions = new FluentAssertions.Execution.AssertionScope();
+        foreach (var width in new[] { 280, 360, 400 })
+        foreach (var results in new[] { false, true })
+        {
+            panel.Width = width;
+            panel.PlannerVm.ShowResults = results;
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Save((FrameworkElement)panel.Content, Path.Combine(output, $"{theme}-{night}-{width}-{results}.png"));
+            var texts = new[] { "GoalTabButton", "ResultTabButton" }
+                .SelectMany(name => Descendants<TextBlock>((Button)view.FindName(name)))
+                .Concat(Descendants<TextBlock>(view).Where(t => t.Text is "计算完成" or "0.0 秒 · 改动后自动重算")).ToList();
+            texts.Should().HaveCount(4);
+            foreach (var text in texts)
+            {
+                var foreground = ((SolidColorBrush)text.Foreground).Color;
+                var background = Background(text);
+                var a = Luminance(foreground);
+                var b = Luminance(background);
+                ((Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05)).Should().BeGreaterThanOrEqualTo(4.5,
+                    $"{theme}, night={night}, width={width}, results={results}, text={text.Text}");
+            }
+        }
+        panel.Close();
+
+        static Color Background(DependencyObject element)
+        {
+            for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+                if (parent is Border { Background: SolidColorBrush brush } && brush.Color.A == 255) return brush.Color;
+            throw new InvalidOperationException("Planner text has no opaque background.");
+        }
+        static double Luminance(Color color)
+        {
+            static double Linear(byte value) => value / 255.0 <= 0.04045
+                ? value / 255.0 / 12.92 : Math.Pow((value / 255.0 + 0.055) / 1.055, 2.4);
+            return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+        }
+    }, $"{nameof(PlannerChrome_HasReadableContrast)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task TransientHints_HaveReadableContrast(GameShopTheme theme, bool night) => ui.RunAsync(() =>
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "hint-contrast-" + Guid.NewGuid().ToString("N"));
+        var calculator = new CovenantCalculator([], [], new Dictionary<string, string>());
+        var panel = new SidePanelWindow(new OperatorBrowseViewModel(), new EquipmentBrowseViewModel(),
+            new TrackingViewModel(), new GameStateViewModel(), new BanViewModel(), new EnemyViewModel(),
+            new LineupViewModel(new LineupStore(Path.Combine(folder, "lineups"), calculator.EquipmentRules), calculator),
+            new LineupShareService(calculator.EquipmentRules, Path.Combine(folder, "share")), [], [], [],
+            new SettingsManager(folder), GameShopTheme.Terminal, new SidePanelPositionSettings());
+        var content = (FrameworkElement)panel.Content;
+        panel.Content = null;
+        var host = new Window { Content = content, Width = 280, Height = 900, WindowStyle = WindowStyle.None,
+            Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 };
+        host.Show();
+        ThemeManager.Apply(theme, night);
+        var toast = (Border)panel.FindName("ToastBorder");
+        var toastText = (TextBlock)panel.FindName("ToastText");
+        toastText.Text = "已追踪阵容“示例阵容”：新增 7 干员 / 2 装备";
+        toast.Visibility = Visibility.Visible;
+        toast.Opacity = 1;
+        var tooltip = new ToolTip { Content = "把这套阵容的干员加入追踪" };
+        tooltip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        tooltip.Arrange(new Rect(tooltip.DesiredSize));
+        tooltip.UpdateLayout();
+        var tooltipText = Descendants<TextBlock>(tooltip).Single(t => t.Text == (string)tooltip.Content);
+        var output = Path.Combine(AppContext.BaseDirectory, "TestResults", "hint-contrast");
+        Directory.CreateDirectory(output);
+        using var assertions = new FluentAssertions.Execution.AssertionScope();
+        foreach (var (name, picker) in new[]
+        {
+            ("equipment", new SimplePickerDialog([new Equipment { Name = "示例装备", Tier = 3,
+                Normal = new EquipmentVariant { EffectDescription = "提升攻击力。" } }], null, false)),
+            ("strategy", new SimplePickerDialog("选择策略", [new SimplePickerDialog.PickerItem(
+                "example", "示例策略", null, Summary: "示例策略：提升本局阵容的作战能力。")], null))
+        })
+        {
+            var pickerContent = (FrameworkElement)picker.Content;
+            picker.Content = null;
+            new Window { Content = pickerContent, Width = 420, Height = 300, WindowStyle = WindowStyle.None,
+                Opacity = 0, ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000 }.Show();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            var list = (ListBox)picker.FindName("ItemsList");
+            var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+            var summary = (ToolTip)item.ToolTip;
+            summary.PlacementTarget = item;
+            summary.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            summary.Arrange(new Rect(summary.DesiredSize));
+            summary.UpdateLayout();
+            var text = (TextBlock)summary.Content;
+            text.Text.Should().NotBeNullOrEmpty();
+            ((SolidColorBrush)text.Foreground).Color.Should().Be(((SolidColorBrush)tooltip.Foreground).Color,
+                $"{name} summary inherits the readable tooltip text color in {theme}, night={night}");
+            summary.Background.Should().BeSameAs(tooltip.Background);
+            Save(summary, Path.Combine(output, $"{theme}-{night}-{name}-summary.png"));
+        }
+        foreach (var width in new[] { 280, 360 })
+        {
+            host.Width = width;
+            content.Measure(new Size(width, 900));
+            content.Arrange(new Rect(0, 0, width, 900));
+            content.UpdateLayout();
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            toast.IsVisible.Should().BeTrue();
+            Save(tooltip, Path.Combine(output, $"{theme}-{night}-{width}-tooltip.png"));
+            var toastPreview = new Border { Width = toast.ActualWidth, Height = toast.ActualHeight, Background = new VisualBrush(toast) };
+            toastPreview.Measure(toast.RenderSize);
+            toastPreview.Arrange(new Rect(toast.RenderSize));
+            Save(toastPreview, Path.Combine(output, $"{theme}-{night}-{width}-toast.png"));
+            var surface = ((SolidColorBrush)panel.FindResource("PanelBackgroundBrush")).Color;
+            foreach (var (text, background) in new[] { (tooltipText, tooltip.Background), (toastText, toast.Background) })
+            {
+                var foreground = ((SolidColorBrush)text.Foreground).Color;
+                var color = ((SolidColorBrush)background).Color;
+                var alpha = color.A / 255.0;
+                var composite = Color.FromRgb((byte)(color.R * alpha + surface.R * (1 - alpha)),
+                    (byte)(color.G * alpha + surface.G * (1 - alpha)), (byte)(color.B * alpha + surface.B * (1 - alpha)));
+                var a = Luminance(foreground);
+                var b = Luminance(composite);
+                var contrast = (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+                contrast.Should().BeGreaterThanOrEqualTo(4.5, $"{theme}, night={night}, width={width}, text={text.Text}");
+            }
+        }
+
+        static double Luminance(Color color)
+        {
+            static double Linear(byte value) => value / 255.0 <= 0.04045
+                ? value / 255.0 / 12.92 : Math.Pow((value / 255.0 + 0.055) / 1.055, 2.4);
+            return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+        }
+    }, $"{nameof(TransientHints_HaveReadableContrast)}-{theme}-{night}");
 
     [Fact]
     public Task LineupEditor_FiltersAndEditsLineups() => ui.RunAsync(LineupFeatureTests.Verify, nameof(LineupEditor_FiltersAndEditsLineups));
+
+    [Fact]
+    public Task CandidateEquipment_PickerEditorAndTracking() => ui.RunAsync(CandidateEquipmentViewTests.Verify, nameof(CandidateEquipment_PickerEditorAndTracking));
+
+    [Fact]
+    public Task LineupRecommendations_FilterAndOpenRepair() => ui.RunAsync(LineupRecommendationViewTests.Verify, nameof(LineupRecommendations_FilterAndOpenRepair));
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task LineupStates_FilterAndShowPendingRecommendations(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => LineupStateFilterViewTests.Verify(theme, night), $"{nameof(LineupStates_FilterAndShowPendingRecommendations)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task EditorRedesign_PickersAndCovenantIcons(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => EditorRedesignViewTests.Verify(theme, night), $"{nameof(EditorRedesign_PickersAndCovenantIcons)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task EditorCopy_SubmenuAndPhaseResult(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => EditorCopyMenuTests.Verify(theme, night), $"{nameof(EditorCopy_SubmenuAndPhaseResult)}-{theme}-{night}");
 
     [Fact]
     public Task UpdateSettings_TrayAndHotkeys() => ui.RunAsync(UpdateAndTrayTests.Verify, nameof(UpdateSettings_TrayAndHotkeys));
@@ -70,6 +432,69 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
 
     [Fact]
     public Task Tracking_EquipmentAndGroups() => ui.RunAsync(TrackingWorkflowViewTests.VerifyEquipmentAndGroups, nameof(Tracking_EquipmentAndGroups));
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task EquipmentCompletion_KeepsEquipmentAcrossReload(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => EquipmentCompletionViewTests.Verify(theme, night), $"{nameof(EquipmentCompletion_KeepsEquipmentAcrossReload)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task OperatorCatalogue_ShowsSupportAndSelectedCustom(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => OperatorCatalogueViewTests.Verify(theme, night), $"{nameof(OperatorCatalogue_ShowsSupportAndSelectedCustom)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task CoreBan_UpdatesCodexAndPreservesManualBan(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => CoreBanViewTests.Verify(theme, night), $"{nameof(CoreBan_UpdatesCodexAndPreservesManualBan)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task PlannerLockedBan_PausesAndRestoresAcrossThemes(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => PlannerLockedBanViewTests.Verify(theme, night), $"{nameof(PlannerLockedBan_PausesAndRestoresAcrossThemes)}-{theme}-{night}");
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task RecognitionHotkey_SettingsAndDispatch(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => RecognitionHotkeyViewTests.Verify(theme, night), $"{nameof(RecognitionHotkey_SettingsAndDispatch)}-{theme}-{night}");
+
+    [Fact]
+    public Task Codex_PreservesFiltersAndNavigation() => ui.RunAsync(ClearAndLineupSourceViewTests.VerifyCodex, nameof(Codex_PreservesFiltersAndNavigation));
+
+    [Theory]
+    [InlineData(GameShopTheme.Terminal, false)]
+    [InlineData(GameShopTheme.Terminal, true)]
+    [InlineData(GameShopTheme.Ursus, false)]
+    [InlineData(GameShopTheme.Ursus, true)]
+    [InlineData(GameShopTheme.Closure, false)]
+    [InlineData(GameShopTheme.Closure, true)]
+    public Task RunInfo_BansAndEnemyRemainUsable(GameShopTheme theme, bool night)
+        => ui.RunAsync(() => RunInfoViewTests.Verify(theme, night), $"{nameof(RunInfo_BansAndEnemyRemainUsable)}-{theme}-{night}");
 
     [Fact]
     public Task ClearInputs_PreserveLineupSources() => ui.RunAsync(ClearAndLineupSourceViewTests.Verify, nameof(ClearInputs_PreserveLineupSources));
@@ -134,7 +559,8 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
                 var operators = store.LoadOperatorsAsync().GetAwaiter().GetResult();
                 vm.LoadOperators(operators.Where(o => o.RequiredStrategyId.Length == 0).ToList());
                 var view = new OperatorBrowseView { DataContext = vm };
-                view.ClearRunRequested += () => vm.ClearCovenantHighlights();
+                var runView = new RunBanView { DataContext = vm };
+                runView.ClearRunRequested += () => vm.ClearCovenantHighlights();
                 host.Content = view;
                 var toggle = (System.Windows.Controls.Primitives.ToggleButton)view.FindName("FilterToggle");
                 toggle.IsChecked = true;
@@ -248,7 +674,7 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
                     Save(view, Path.Combine(output, isLight ? "light.png" : "dark.png"));
                     Save(tooltip, Path.Combine(output, isLight ? "light-details.png" : "dark-details.png"));
 
-                    ((Button)view.FindName("ClearHighlightsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    ((Button)runView.FindName("ClearHighlightsButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
                     vm.HighlightedCovenants.Should().BeEmpty();
                     item.IsSelected.Should().BeTrue();
@@ -563,14 +989,20 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
                         ((SolidColorBrush)settingsButton.Background).Color.Should().Be(Colors.Transparent);
                         ((SolidColorBrush)((System.Windows.Shapes.Path)settingsButton.Content).Fill).Color.Should()
                             .Be(((SolidColorBrush)application.FindResource("TextPrimaryBrush")).Color);
-                        for (var i = 0; i < tabs.Items.Count; i++)
+                        // The 阵容 tab holds 我的阵容 and 规划 behind a segment; visit both.
+                        var lineupsSegment = (ListBox)sidePanel.FindName("LineupsSegment");
+                        var visits = Enumerable.Range(0, tabs.Items.Count).SelectMany(t =>
+                            ((TabItem)tabs.Items[t]).Content is UserControl ? new[] { (t, -1) } : new[] { (t, 0), (t, 1) });
+                        foreach (var (i, segment) in visits)
                         {
                             tabs.SelectedIndex = i;
+                            if (segment >= 0) lineupsSegment.SelectedIndex = segment;
                             content.Measure(new Size(310, 900));
                             content.Arrange(new Rect(0, 0, 310, 900));
                             content.UpdateLayout();
                             Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                            var page = (UserControl)((TabItem)tabs.Items[i]).Content;
+                            var page = segment < 0 ? (UserControl)((TabItem)tabs.Items[i]).Content
+                                : (UserControl)sidePanel.FindName(segment == 0 ? "LineupView" : "PlannerView");
                             if (page is OperatorBrowseView operatorPage)
                             {
                                 var operatorFilters = (System.Windows.Controls.Primitives.ToggleButton)operatorPage.FindName("FilterToggle");
@@ -646,23 +1078,15 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
                             }
                             if (page is EnemyView enemyView)
                             {
-                                var button = (Button)enemyView.FindName("RecognizeEnemyButton");
+                                enemyView.FindName("RecognizeEnemyButton").Should().BeNull();
+                                enemyView.FindName("RecognitionStatusText").Should().BeNull();
                                 enemyVm.BeginRecognition();
                                 content.UpdateLayout();
-                                button.IsEnabled.Should().BeFalse();
-                                ((TextBlock)enemyView.FindName("RecognitionStatusText")).Text.Should().StartWith("正在");
                                 enemyVm.Update(new("假想敌：鳍", ["特训敌人·元素", "特训敌人·致命"],
                                     ["假想敌：鳍", "特训敌人·元素", "特训敌人·致命"]),
                                     null, [new() { TypeName = "元素" }, null]);
                                 content.UpdateLayout();
-                                button.IsEnabled.Should().BeTrue();
                                 Descendants<TextBlock>(enemyView).Should().Contain(t => t.Text.Contains("致命：资料未收录"));
-                                int requested = 0;
-                                Action onRequest = () => requested++;
-                                sidePanel.EnemyRecognitionRequested += onRequest;
-                                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                                requested.Should().Be(1);
-                                sidePanel.EnemyRecognitionRequested -= onRequest;
                             }
                             if (page is EquipmentBrowseView equipmentView)
                             {
@@ -1223,7 +1647,13 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
                     content.Measure(new Size(310, 900));
                     content.Arrange(new Rect(0, 0, 310, 900));
                     content.UpdateLayout();
-                    var lineupView = (LineupListView)((TabItem)tabs.Items[3]).Content;
+                    ((ListBox)sidePanel.FindName("LineupsSegment")).SelectedIndex = 0;
+                    var lineupView = (LineupListView)sidePanel.FindName("LineupView");
+                    WaitForUi(() =>
+                    {
+                        content.UpdateLayout();
+                        return Descendants<Button>(lineupView).Any(b => b.Content as string == "分享");
+                    }, "the lineup cards are rebuilt after the list changes");
                     Descendants<Button>(lineupView).Single(b => b.Content as string == "分享")
                         .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     WaitForUi(() => ((TextBlock)sidePanel.FindName("ToastText")).Text.StartsWith("生成分享链接失败"),

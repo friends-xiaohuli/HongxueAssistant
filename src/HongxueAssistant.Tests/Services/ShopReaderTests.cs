@@ -12,6 +12,145 @@ namespace HongxueAssistant.Tests.Services;
 [Collection("Native OCR")]
 public class ShopReaderTests(ShopReaderFixture fixture) : IClassFixture<ShopReaderFixture>
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SingleLetterOperatorMustBeOnTheNameRow(bool realOperator)
+    {
+        using var bitmap = new Bitmap(1920, 1080);
+        using var stream = new MemoryStream(); bitmap.Save(stream, ImageFormat.Png);
+        OcrTextResult[] texts = [new("甲", (1300, 390, 60, 40)), new("乙", (1800, 390, 60, 40)),
+            new("W", (1000, realOperator ? 390 : 450, 60, 40)), new("收起", (3500, 370, 160, 60))];
+        var ocr = new Mock<IOcrEngine>();
+        ocr.Setup(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>())).ReturnsAsync(texts);
+        var reader = new ShopReader(ocr.Object, ["甲", "乙", "W"]);
+        var cards = await reader.ReadAsync(stream.ToArray(), 1920, 1080, ["甲", "乙", "W"]);
+        cards.Select(c => c.Name).Should().BeEquivalentTo(realOperator ? ["甲", "乙", "W"] : new[] { "甲", "乙" });
+    }
+
+    [Theory]
+    [InlineData("shop-tier2-color.png", GameShopTheme.Closure)]
+    [InlineData("shop-frontier-tier1-color.png", GameShopTheme.Ursus)]
+    [InlineData("shop-terminal-tier1-color.png", GameShopTheme.Terminal)]
+    public async Task CompleteFirstPassUsesOnlyOneShopOcr(string file, GameShopTheme theme)
+    {
+        var ocr = ForwardingEngine();
+        var reader = new ShopReader(ocr.Object, fixture.Names) { Theme = theme };
+        var bytes = File.ReadAllBytes(fixture.Sample(file));
+        var cards = await reader.ReadAsync(bytes, 1920, 1080, fixture.Names);
+        cards.Should().NotBeEmpty();
+        ocr.Verify(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), 0, 0, 3840, 540), Times.Once);
+    }
+
+    [Fact]
+    public async Task FirstPassMissingAnOccupiedSlotStillRunsRecovery()
+    {
+        var ocr = ForwardingEngine();
+        var passes = 0;
+        ocr.Setup(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), 0, 0, 3840, 540))
+            .Returns(async (byte[] bytes, int x, int y, int w, int h) =>
+            {
+                var texts = await fixture.Engine.RecognizeRegionAsync(bytes, x, y, w, h);
+                return ++passes == 1 ? texts.Where(t => !t.Text.Contains("慕斯")).ToArray() : texts;
+            });
+        var reader = new ShopReader(ocr.Object, fixture.Names) { Theme = GameShopTheme.Terminal };
+        var cards = await reader.ReadAsync(File.ReadAllBytes(fixture.Sample("shop-terminal-tier1-color.png")), 1920, 1080, fixture.Names);
+        cards.Select(c => c.Name).Should().Equal("虹彩活血饮料", "卡达", "慕斯", "角峰");
+        passes.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("shop-tier2-color.png", GameShopTheme.Closure)]
+    [InlineData("shop-frontier-tier1-color.png", GameShopTheme.Ursus)]
+    [InlineData("shop-terminal-tier1-color.png", GameShopTheme.Terminal)]
+    public async Task LightweightRecheckRereadsDynamicNamesAndRejectsRefreshesAndMissingControl(string file, GameShopTheme theme)
+    {
+        var ocr = ForwardingEngine();
+        var reader = new ShopReader(ocr.Object, fixture.Names) { Theme = theme };
+        var bytes = File.ReadAllBytes(fixture.Sample(file));
+        var cards = await reader.ReadAsync(bytes, 1920, 1080, fixture.Names);
+        ocr.Invocations.Clear();
+        (await reader.IsSameOpenShopAsync(bytes, bytes, cards)).Should().BeTrue();
+        ocr.Verify(e => e.RecognizeLineAsync(It.IsAny<byte[]>(), 0, 0, It.Is<int>(w => w < 300), It.Is<int>(h => h < 160)), Times.Once);
+        ocr.Verify(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        using var stream = new MemoryStream(bytes);
+        using var changed = new Bitmap(stream);
+        var card = cards[0];
+        int x = (int)(card.OcrRegion.X * 1920) - 2, y = (int)(card.OcrRegion.Y * 1080) + 2;
+        var old = changed.GetPixel(x, y);
+        changed.SetPixel(x, y, Color.FromArgb(255 - old.R, 255 - old.G, 255 - old.B));
+        using var output = new MemoryStream(); changed.Save(output, ImageFormat.Png);
+        ocr.Invocations.Clear();
+        (await reader.IsSameOpenShopAsync(bytes, output.ToArray(), cards)).Should().BeTrue("background animation must not reject a still-identical name");
+        ocr.Verify(e => e.RecognizeLineAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Exactly(2));
+        ocr.Verify(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        (await reader.IsSameOpenShopAsync(bytes, bytes, [])).Should().BeFalse("an empty whole shop may be a refresh transition");
+        var replacement = cards[1];
+        using (var original = new Bitmap(new MemoryStream(bytes)))
+        using (var graphics = Graphics.FromImage(changed))
+        {
+            var target = new Rectangle((int)(card.OcrRegion.X * 1920), (int)(card.OcrRegion.Y * 1080),
+                (int)Math.Ceiling(card.OcrRegion.Width * 1920), (int)Math.Ceiling(card.OcrRegion.Height * 1080));
+            graphics.FillRectangle(Brushes.White, target);
+            graphics.DrawImage(original, target.X, target.Y, new Rectangle((int)(replacement.OcrRegion.X * 1920),
+                (int)(replacement.OcrRegion.Y * 1080), (int)Math.Ceiling(replacement.OcrRegion.Width * 1920),
+                (int)Math.Ceiling(replacement.OcrRegion.Height * 1080)), GraphicsUnit.Pixel);
+        }
+        output.SetLength(0); changed.Save(output, ImageFormat.Png);
+        (await reader.IsSameOpenShopAsync(bytes, output.ToArray(), cards)).Should().BeFalse("a new identity at the same position is a refresh");
+        using (var graphics = Graphics.FromImage(changed)) graphics.FillRectangle(Brushes.Black, 1680, 790, 240, 290);
+        // The missing shop control must reject the frame even before changed names are read.
+        changed.SetPixel(x, y, old); output.SetLength(0); changed.Save(output, ImageFormat.Png);
+        (await reader.IsSameOpenShopAsync(bytes, output.ToArray(), cards)).Should().BeFalse();
+    }
+
+    private Mock<IOcrEngine> ForwardingEngine()
+    {
+        var ocr = new Mock<IOcrEngine>();
+        ocr.Setup(e => e.RecognizeRegionAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Returns((byte[] image, int x, int y, int w, int h) => fixture.Engine.RecognizeRegionAsync(image, x, y, w, h));
+        ocr.Setup(e => e.RecognizeLineAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Returns((byte[] image, int x, int y, int w, int h) => fixture.Engine.RecognizeLineAsync(image, x, y, w, h));
+        return ocr;
+    }
+
+    [Theory]
+    [InlineData("shop-frontier-tier1-color.png", GameShopTheme.Ursus)]
+    [InlineData("shop-terminal-tier1-color.png", GameShopTheme.Terminal)]
+    public async Task LightweightRecheckSupportsSmallCapturesAndRejectsResolutionChanges(string file, GameShopTheme theme)
+    {
+        using var original = new Bitmap(fixture.Sample(file));
+        using var small = new Bitmap(1280, 720);
+        using (var graphics = Graphics.FromImage(small))
+        {
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(original, new Rectangle(0, 0, 1280, 720));
+        }
+        using var stream = new MemoryStream(); small.Save(stream, ImageFormat.Png);
+        var bytes = stream.ToArray();
+        var reader = new ShopReader(fixture.Engine, fixture.Names) { Theme = theme };
+        var cards = await reader.ReadAsync(bytes, 1280, 720, fixture.Names);
+        (await reader.IsSameOpenShopAsync(bytes, bytes, cards)).Should().BeTrue();
+        (await reader.IsSameOpenShopAsync(bytes, File.ReadAllBytes(fixture.Sample(file)), cards)).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("shop-terminal-tier1-color.png")]
+    [InlineData("shop-terminal-tier4-frozen-gray.png")]
+    [InlineData("shop-frontier-tier2-frozen-gray.png")]
+    [InlineData("shop-tier6-frozen.png")]
+    public async Task ExistingDarkAndFrozenCardsAreNotEmptyPurchaseSlots(string file)
+    {
+        fixture.SelectTheme(file);
+        var bytes = File.ReadAllBytes(fixture.Sample(file));
+        var cards = await fixture.Reader.ReadAsync(bytes, 1920, 1080, fixture.Names);
+        fixture.Reader.IsShopOpen.Should().BeTrue();
+        using var bitmap = new Bitmap(fixture.Sample(file));
+        cards.Should().NotBeEmpty();
+        foreach (var card in cards)
+            ShopPurchaseDetector.IsEmpty(bitmap, card).Should().BeFalse($"{file}: {card.Name} is visibly still on sale");
+    }
+
     // These run the real bundled PaddleOCR models against anonymized client crops.
     [Theory]
     [InlineData("shop-tier2-color.png", "聚合急救箱|渡桥|杰克|陨星|艾丝黛尔")]
