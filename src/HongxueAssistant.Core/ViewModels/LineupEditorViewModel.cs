@@ -22,10 +22,21 @@ public partial class LineupEditorViewModel : ObservableObject
     private readonly Dictionary<LineupPhase, ObservableCollection<LineupSlot>> _phaseSlots = [];
     private readonly LineupPhase _initialPhase;
     private readonly List<LineupStrategySlot> _initialStrategies;
+    private readonly List<LineupRoundStage> _roundStages = [];
+    private readonly List<ObservableCollection<LineupSlot>> _roundStageSlots = [];
+    private readonly List<LineupRoundStage> _initialRoundStages;
+    private readonly HashSet<LineupSlot> _automaticRoundMechs = [];
 
     public ObservableCollection<LineupStrategySlot> StrategySlots { get; } = [];
 
     public LineupPhase CurrentPhase { get; private set; }
+    public int CurrentRoundStageIndex { get; private set; } = -1;
+    public bool HasRoundStages => _roundStages.Count > 0;
+    public IReadOnlyList<LineupRoundStage> RoundStages => _roundStages.Select((_, index) => ExportRoundStage(index)).ToList();
+    public string CurrentStageTitle => CurrentRoundStageIndex >= 0 ? _roundStages[CurrentRoundStageIndex].DisplayTitle
+        : HasRoundStages && CurrentPhase == LineupPhase.后期 ? "成型阵容" : CurrentPhase.ToString();
+    public int CurrentGuideTabIndex => CurrentRoundStageIndex >= 0 ? _roundStages[CurrentRoundStageIndex].SourceTabIndex
+        : CurrentPhase == LineupPhase.后期 && Guide is not null ? Guide.Tabs.FindIndex(tab => tab.TabType == 1) : -1;
 
     public IReadOnlyList<Operator> AllOperators { get; }
     public IReadOnlyList<Equipment> AllEquipment { get; }
@@ -37,7 +48,7 @@ public partial class LineupEditorViewModel : ObservableObject
     {
         get
         {
-            foreach (var (phase, slots) in _phaseSlots)
+            foreach (var (phase, slots) in AllStageSlots())
                 foreach (var slot in slots.Where(s => s.OperatorName.Length > 0))
                 {
                     var op = AllOperators.FirstOrDefault(o => o.Name == slot.OperatorName);
@@ -48,7 +59,14 @@ public partial class LineupEditorViewModel : ObservableObject
                     if (slot.Equipments.Count > LineupEquipmentService.Capacity(slot))
                         return $"{slot.OperatorName}的装备超过{LineupEquipmentService.Capacity(slot)}件，请移除多余装备或启用精锐";
                 }
-            foreach (var (phase, slots) in _phaseSlots)
+            for (var index = 0; index < _roundStages.Count; index++)
+            {
+                var unknown = _roundStageSlots[index].FirstOrDefault(slot => slot.OperatorName.Length > 0
+                    && !AllOperators.Any(op => op.Name == slot.OperatorName));
+                if (unknown is not null)
+                    return $"{_roundStages[index].DisplayTitle}含本地未收录或无效干员“{unknown.OperatorName}”，请替换或移除后保存";
+            }
+            foreach (var (phase, slots) in AllStageSlots())
                 if (slots.Count(s => s.OperatorName.Length > 0) > MaxSlots)
                     return $"{phase}超过 {MaxSlots} 人（暴躁铁皮也占 1 人口），请筛选至 {MaxSlots} 人以内再保存";
             return "";
@@ -111,6 +129,15 @@ public partial class LineupEditorViewModel : ObservableObject
             if (mech is not null) slots.Add(CloneSlot(mech));
             _phaseSlots.Add(phase, slots);
         }
+        var roundStages = source?.RoundStages is { Count: > 0 }
+            ? source.RoundStages.Where(stage => stage is not null).Select(stage => stage.Clone()).ToList()
+            : LineupRoundStage.FromGuide(Guide);
+        foreach (var stage in roundStages)
+        {
+            stage.SourceTabIndex = ResolveSourceTabIndex(stage, source?.RoundStages is { Count: > 0 } ? source.Guide : Guide);
+            _roundStages.Add(stage);
+            _roundStageSlots.Add(PrepareSlots(stage.Slots));
+        }
         _initialName = Name;
         StrategySlots = new ObservableCollection<LineupStrategySlot>(
             (source?.Strategies ?? []).Select(s => new LineupStrategySlot { StrategyId = s.StrategyId, Tags = [.. s.Tags] }));
@@ -119,6 +146,7 @@ public partial class LineupEditorViewModel : ObservableObject
         SyncMechSlots();
         _initialStrategies = StrategySlots.Select(s => new LineupStrategySlot { StrategyId = s.StrategyId, Tags = [.. s.Tags] }).ToList();
         _initialSlots = _phaseSlots.ToDictionary(pair => pair.Key, pair => pair.Value.Select(CloneSlot).ToList());
+        _initialRoundStages = _roundStages.Select((_, index) => ExportRoundStage(index)).ToList();
         _initialPhase = source is null ? LineupPhase.前期 : LineupPhase.后期;
         SelectPhase(_initialPhase);
     }
@@ -151,6 +179,34 @@ public partial class LineupEditorViewModel : ObservableObject
         return "";
     }
 
+    private int ResolveSourceTabIndex(LineupRoundStage stage, LineupGuide? originalGuide)
+    {
+        if (Guide is null) return -1;
+        var originalTabs = originalGuide?.Tabs;
+        if (originalTabs is not null && stage.SourceTabIndex >= 0 && stage.SourceTabIndex < originalTabs.Count
+            && originalTabs[stage.SourceTabIndex] is { TabType: 2 } originalTab
+            && originalTab.StartRound == stage.StartRound && originalTab.EndRound == stage.EndRound)
+            return originalTabs.Take(stage.SourceTabIndex).Count(tab => tab is not null);
+        return Guide.Tabs.FindIndex(tab => tab.TabType == 2 && tab.StartRound == stage.StartRound && tab.EndRound == stage.EndRound);
+    }
+
+    private static ObservableCollection<LineupSlot> PrepareSlots(IEnumerable<LineupSlot> source)
+    {
+        var list = source.Where(slot => slot is not null).Select(CloneSlot).ToList();
+        var mech = list.FirstOrDefault(IsMech);
+        var slots = new ObservableCollection<LineupSlot>(list.Where(slot => !IsMech(slot)));
+        while (slots.Count < MaxSlots - (mech is null ? 0 : 1)) slots.Add(new LineupSlot());
+        if (mech is not null) slots.Add(mech);
+        return slots;
+    }
+
+    private IEnumerable<(string Title, ObservableCollection<LineupSlot> Slots)> AllStageSlots()
+    {
+        foreach (var (phase, slots) in _phaseSlots) yield return (phase.ToString(), slots);
+        for (var index = 0; index < _roundStages.Count; index++)
+            yield return (_roundStages[index].DisplayTitle, _roundStageSlots[index]);
+    }
+
     private static bool IsMech(LineupSlot slot) => slot.OperatorName == LineupEquipmentService.MechName;
 
     /// <summary>Index of the 暴躁铁皮 slot in <see cref="Slots"/> (−1 when there is none).</summary>
@@ -161,6 +217,25 @@ public partial class LineupEditorViewModel : ObservableObject
 
     /// <summary>People of a phase, 暴躁铁皮 included (for the phase switch).</summary>
     public int FilledCount(LineupPhase phase) => _phaseSlots[phase].Count(s => s.OperatorName.Length > 0);
+    public int FilledRoundCount(int index) => index >= 0 && index < _roundStageSlots.Count
+        ? _roundStageSlots[index].Count(slot => slot.OperatorName.Length > 0) : 0;
+
+    public void SelectRoundStage(int index)
+    {
+        if (index < 0 || index >= _roundStageSlots.Count) throw new ArgumentOutOfRangeException(nameof(index));
+        CurrentRoundStageIndex = index;
+        Slots = _roundStageSlots[index];
+        NotifyCurrentStage();
+        Recalculate();
+    }
+
+    private void NotifyCurrentStage()
+    {
+        OnPropertyChanged(nameof(CurrentPhase));
+        OnPropertyChanged(nameof(CurrentRoundStageIndex));
+        OnPropertyChanged(nameof(CurrentStageTitle));
+        OnPropertyChanged(nameof(CurrentGuideTabIndex));
+    }
 
     /// <summary>
     /// With the 暴躁铁皮 strategy every phase gets the mech in one of its 9 places (an empty place makes room);
@@ -168,17 +243,22 @@ public partial class LineupEditorViewModel : ObservableObject
     /// </summary>
     private void SyncMechSlots()
     {
-        foreach (var slots in _phaseSlots.Values)
+        foreach (var slots in _phaseSlots.Values.Concat(_roundStageSlots))
         {
+            var isRound = _roundStageSlots.Contains(slots);
             var mech = slots.FirstOrDefault(IsMech);
             if (HasMechStrategy && mech is null)
             {
                 if (slots.LastOrDefault(s => s.OperatorName.Length == 0) is { } empty) slots.Remove(empty);
-                slots.Add(new LineupSlot { OperatorName = LineupEquipmentService.MechName });
+                var automatic = new LineupSlot { OperatorName = LineupEquipmentService.MechName };
+                slots.Add(automatic);
+                if (isRound) _automaticRoundMechs.Add(automatic);
             }
-            else if (!HasMechStrategy && mech is not null && mech.Equipments.Count == 0)
+            else if (!HasMechStrategy && mech is not null && mech.Equipments.Count == 0
+                && (!isRound || _automaticRoundMechs.Contains(mech)))
             {
                 slots.Remove(mech);
+                _automaticRoundMechs.Remove(mech);
                 while (slots.Count < MaxSlots) slots.Add(new LineupSlot());
             }
         }
@@ -187,7 +267,9 @@ public partial class LineupEditorViewModel : ObservableObject
     public void SelectPhase(LineupPhase phase)
     {
         CurrentPhase = phase;
+        CurrentRoundStageIndex = -1;
         Slots = _phaseSlots[phase];
+        NotifyCurrentStage();
         Recalculate();
     }
 
@@ -314,6 +396,17 @@ public partial class LineupEditorViewModel : ObservableObject
             StrategySlots.Add(new LineupStrategySlot { StrategyId = slot.StrategyId, Tags = [.. slot.Tags] });
         foreach (var (phase, slots) in _initialSlots)
             _phaseSlots[phase] = new ObservableCollection<LineupSlot>(slots.Select(CloneSlot));
+        _roundStages.Clear();
+        _roundStageSlots.Clear();
+        _automaticRoundMechs.Clear();
+        foreach (var stage in _initialRoundStages)
+        {
+            _roundStages.Add(stage.Clone());
+            _roundStageSlots.Add(PrepareSlots(stage.Slots));
+        }
+        SyncMechSlots();
+        OnPropertyChanged(nameof(RoundStages));
+        OnPropertyChanged(nameof(HasRoundStages));
         SelectPhase(_initialPhase);
     }
 
@@ -323,7 +416,12 @@ public partial class LineupEditorViewModel : ObservableObject
         Slots.Clear();
         for (int i = 0; i < MaxSlots - (keepMech ? 1 : 0); i++)
             Slots.Add(new LineupSlot());
-        if (keepMech) Slots.Add(new LineupSlot { OperatorName = LineupEquipmentService.MechName });
+        if (keepMech)
+        {
+            var automatic = new LineupSlot { OperatorName = LineupEquipmentService.MechName };
+            Slots.Add(automatic);
+            if (CurrentRoundStageIndex >= 0) _automaticRoundMechs.Add(automatic);
+        }
         Recalculate();
     }
 
@@ -390,6 +488,7 @@ public partial class LineupEditorViewModel : ObservableObject
         ActivatedCount = allStats.Count(s => s.Activated);
         FilledSlotCount = Slots.Count(s => !string.IsNullOrEmpty(s.OperatorName));
         OnPropertyChanged(nameof(ValidationError));
+        OnPropertyChanged(nameof(RoundStages));
     }
 
     public Lineup ToLineup() => new()
@@ -397,6 +496,7 @@ public partial class LineupEditorViewModel : ObservableObject
         Id = LineupId,
         SourceUrl = SourceUrl,
         Guide = Guide?.Clone(),
+        RoundStages = _roundStages.Select((_, index) => ExportRoundStage(index)).ToList(),
         Name = string.IsNullOrWhiteSpace(Name) ? "未命名阵容" : Name.Trim(),
         Slots = ExportPhase(LineupPhase.后期),
         EarlySlots = ExportPhase(LineupPhase.前期),
@@ -408,8 +508,20 @@ public partial class LineupEditorViewModel : ObservableObject
     };
 
     // An untouched 暴躁铁皮 slot (no gear) is not worth saving.
-    private List<LineupSlot> ExportPhase(LineupPhase phase) => [.. _phaseSlots[phase]
-        .Where(s => !string.IsNullOrEmpty(s.OperatorName) && (!IsMech(s) || s.Equipments.Count > 0 || s.Tags.Count > 0)).Select(CloneSlot)];
+    private List<LineupSlot> ExportPhase(LineupPhase phase) => ExportSlots(_phaseSlots[phase]);
+
+    private LineupRoundStage ExportRoundStage(int index) => new()
+    {
+        StartRound = _roundStages[index].StartRound, EndRound = _roundStages[index].EndRound,
+        SourceTabIndex = _roundStages[index].SourceTabIndex,
+        Slots = _roundStageSlots[index].Where(slot => !string.IsNullOrEmpty(slot.OperatorName)
+            && (!IsMech(slot) || !_automaticRoundMechs.Contains(slot) || slot.Equipments.Count > 0 || slot.Tags.Count > 0))
+            .Select(CloneSlot).ToList()
+    };
+
+    private static List<LineupSlot> ExportSlots(IEnumerable<LineupSlot> slots) => [.. slots
+        .Where(slot => !string.IsNullOrEmpty(slot.OperatorName) && (!IsMech(slot) || slot.Equipments.Count > 0 || slot.Tags.Count > 0))
+        .Select(CloneSlot)];
 
     private static LineupSlot CloneSlot(LineupSlot s) => new()
     {

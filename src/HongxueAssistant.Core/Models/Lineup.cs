@@ -65,7 +65,11 @@ public class Lineup
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LineupGuide? Guide { get; set; }
 
-    /// <summary>后期阵容（最多 9 个），用于列表预览；追踪包含四个阶段，同名干员优先使用后期配置。</summary>
+    /// <summary>Each source round interval is edited independently; older lineups have an empty list.</summary>
+    [JsonPropertyName("roundStages")]
+    public List<LineupRoundStage> RoundStages { get; set; } = [];
+
+    /// <summary>成型／后期阵容（最多 9 个），用于列表预览；追踪包含手动及真实回合阶段，同名干员优先使用成型配置。</summary>
     [JsonPropertyName("slots")]
     public List<LineupSlot> Slots { get; set; } = [];
 

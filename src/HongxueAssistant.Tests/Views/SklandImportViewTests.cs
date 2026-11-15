@@ -150,6 +150,7 @@ internal static class SklandImportViewTests
             tracking.TrackedOperators.Should().HaveCount(20);
             tracking.TrackedOperators.Count(entry => entry.Role == TrackingRole.Final).Should().Be(6);
             VerifyGuideFlow(operators, calculator);
+            VerifyEditableRoundStages(operators, calculator);
         }
         finally
         {
@@ -209,6 +210,89 @@ internal static class SklandImportViewTests
                 Save(flow, $"complete-flow-{theme}-{night}");
             }
             finally { flow?.Close(); editor.Close(); }
+        }
+    }
+
+    private static void VerifyEditableRoundStages(Operator[] operators, CovenantCalculator calculator)
+    {
+        var intervals = new[] { (1, 4), (5, 7), (8, 11), (12, 13) };
+        var source = new Lineup
+        {
+            Name = "网页原始四回合", SourceUrl = Services.SklandGuideImporterTests.Url,
+            Slots = [new() { OperatorName = "乙", IsElite = true }],
+            Guide = new LineupGuide
+            {
+                Title = "成型与四回合分别编辑",
+                Tabs = [new() { TabType = 1, OperationIdea = "成型说明", Operators = [new() { OperatorName = "乙", ShopLevel = 3 }] },
+                    .. intervals.Select((interval, index) => new LineupGuideTab
+                    {
+                        TabType = 2, StartRound = interval.Item1, EndRound = interval.Item2,
+                        OperationIdea = $"第{interval.Item1}到{interval.Item2}回合原始说明",
+                        Operators = [new() { OperatorName = "甲", ShopLevel = 2, SkillId = "skill-" + index }],
+                        Equipment = [new() { ItemId = "item-" + index, Name = "本回合推荐" + index }]
+                    })]
+            },
+            RoundStages = [.. intervals.Select((interval, index) => new LineupRoundStage
+            {
+                StartRound = interval.Item1, EndRound = interval.Item2, SourceTabIndex = index + 1,
+                Slots = index % 2 == 0 ? [new() { OperatorName = "甲" }]
+                    : [new() { OperatorName = "甲" }, new() { OperatorName = "乙" }]
+            })]
+        };
+        foreach (var theme in Enum.GetValues<GameShopTheme>())
+        foreach (var night in new[] { false, true })
+        {
+            ThemeManager.Apply(theme, night);
+            var vm = new LineupEditorViewModel(source, operators, [], calculator);
+            var editor = new LineupEditorWindow(vm, [])
+            { Width = 760, Height = 680, Opacity = 0, ShowActivated = false,
+                ShowInTaskbar = false, Left = -20000, Top = -20000 };
+            try
+            {
+                editor.Show();
+                ((Expander)editor.FindName("ManualStagesExpander")).IsExpanded.Should().BeFalse();
+                var stageTabs = (Panel)editor.FindName("RoundStageTabs");
+                stageTabs.Children.OfType<Button>().Should().HaveCount(5);
+                for (var index = 0; index < intervals.Length; index++)
+                {
+                    // RefreshEditor reconstructs the buttons: always resolve the current rendered tab.
+                    stageTabs.Children.OfType<Button>().Single(button => Equals(button.DataContext, index))
+                        .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    editor.UpdateLayout();
+                    vm.CurrentRoundStageIndex.Should().Be(index);
+                    ((TextBlock)editor.FindName("CurrentStageText")).Text.Should().Contain(source.RoundStages[index].DisplayTitle);
+                    ((TextBox)editor.FindName("CurrentStageNotesText")).Text.Should().Be(source.Guide.Tabs[index + 1].OperationIdea);
+                    ((ItemsControl)editor.FindName("CurrentStageEquipmentHost")).Items.Count.Should().Be(1);
+                    vm.FilledSlotCount.Should().Be(source.RoundStages[index].Slots.Count);
+                    foreach (Button button in stageTabs.Children)
+                    {
+                        var bounds = button.TransformToAncestor((Visual)editor.Content).TransformBounds(new Rect(button.RenderSize));
+                        bounds.Left.Should().BeGreaterThanOrEqualTo(0);
+                        bounds.Right.Should().BeLessThanOrEqualTo(editor.ActualWidth - 1);
+                    }
+                    if (index is 0 or 3) Save(editor, $"round-stages-{theme}-{night}-{index}");
+                }
+                stageTabs.Children.OfType<Button>().Single(button => Equals(button.DataContext, 0))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var host = (ItemsControl)editor.FindName("SlotsHost");
+                var firstCard = (FrameworkElement)host.Items[0];
+                Descendants<Button>(firstCard).Single(button => Equals(button.ToolTip, "清空该位置"))
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                vm.FilledRoundCount(0).Should().Be(0);
+                vm.FilledRoundCount(3).Should().Be(2);
+                vm.FilledCount(LineupPhase.后期).Should().Be(1);
+                ((Button)editor.FindName("SaveButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                editor.Result.Should().NotBeNull();
+                var saved = editor.Result!;
+                saved.RoundStages.Should().HaveCount(4);
+                saved.RoundStages[0].Slots.Should().BeEmpty();
+                saved.RoundStages[3].Slots.Should().HaveCount(2);
+                var reopened = new LineupEditorViewModel(saved, operators, [], calculator);
+                reopened.FilledRoundCount(0).Should().Be(0);
+                reopened.FilledRoundCount(3).Should().Be(2);
+                source.RoundStages[0].Slots.Should().ContainSingle();
+            }
+            finally { editor.Close(); }
         }
     }
 

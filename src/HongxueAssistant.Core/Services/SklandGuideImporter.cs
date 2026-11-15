@@ -68,6 +68,7 @@ public sealed class SklandGuideImporter(HttpClient http, IReadOnlyList<Operator>
                     Tabs = tabs.Select(tab => ReadGuideTab(tab, resource)).ToList()
                 }
             };
+            lineup.RoundStages = LineupRoundStage.FromGuide(lineup.Guide);
             var unselectedCustom = new List<string>();
             foreach (var entry in chars)
             {
@@ -117,7 +118,7 @@ public sealed class SklandGuideImporter(HttpClient http, IReadOnlyList<Operator>
             var customNotice = unselectedCustom.Count > 0
                 ? $"尚未选入个人自选：{string.Join("、", unselectedCustom)}。使用前请到干员栏选择，本次不会修改自选名单。"
                 : "";
-            return new(lineup, $"{people}策略 {lineup.Strategies.Count} 项。{customNotice}推荐装备 {equips} 件、回合讲解 {rounds} 段及总体思路已保留，可在“攻略流程”查看。装备未绑定到干员；技能与模组保留攻略原始选择，规划仍使用本地模式数据。检查并保存后才加入我的阵容，不自动追踪。");
+            return new(lineup, $"{people}策略 {lineup.Strategies.Count} 项。{customNotice}已生成 {rounds} 个独立回合阶段，可分别编辑并保存；推荐装备 {equips} 件、回合讲解 {rounds} 段及总体思路已保留。装备未绑定到干员；技能与模组保留攻略原始选择，规划仍使用本地模式数据。检查并保存后才加入我的阵容，不自动追踪。");
         }
         catch (Exception ex) when (ex is KeyNotFoundException or InvalidOperationException or JsonException)
         {

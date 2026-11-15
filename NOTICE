@@ -48,3 +48,6 @@ Repository: friends-xiaohuli/HongxueAssistant. Original attribution and licenses
 
 Further local enhancements, 2026-11-14: complete Skland guide snapshots and phase-copy UI;
 GitHub API/download route diagnostics and fallback with package integrity checks.
+
+Editable author round stages, 2026-11-15: independent lineup phases, legacy guide migration,
+phase-aware editor context, complete round persistence/sharing and transition tracking.

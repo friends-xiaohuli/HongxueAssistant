@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- Version is overridden by CI via -p:Version=x.y.z during release builds -->
-    <Version>1.8.0-alpha3</Version>
+    <Version>1.8.0-alpha4</Version>
     <AssemblyTitle>HongxueAssistant</AssemblyTitle>
     <Product>HongxueAssistant</Product>
     <!-- Custom entry point with OS version guard (Program.cs); overrides WPF auto-generated Main -->

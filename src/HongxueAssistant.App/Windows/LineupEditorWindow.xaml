@@ -182,9 +182,9 @@
             <Border Style="{StaticResource DialogFooter}" DockPanel.Dock="Bottom">
                 <DockPanel>
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                        <Button Content="清空本阶段" Style="{StaticResource EditorGhostButton}" Click="OnClearClick" Margin="0,0,2,0" />
+                        <Button x:Name="ClearStageButton" Content="清空本阶段" Style="{StaticResource EditorGhostButton}" Click="OnClearClick" Margin="0,0,2,0" />
                         <Button Content="撤销修改" Style="{StaticResource EditorGhostButton}" Click="OnResetClick" Margin="0,0,10,0"
-                                ToolTip="恢复到打开编辑器时的样子" />
+                                ToolTip="恢复本次打开时的全部阶段、回合、策略与名称" />
                         <Button Content="取消" Style="{StaticResource EditorSecondaryButton}" Click="OnCancelClick" Margin="0,0,8,0" />
                         <Button x:Name="SaveButton" Content="保存" Style="{StaticResource EditorPrimaryButton}" Click="OnSaveClick" />
                     </StackPanel>
@@ -221,27 +221,38 @@
                 </Grid.ColumnDefinitions>
 
                 <DockPanel x:Name="SlotsPanel" Margin="16,14,16,12">
-                    <!-- name · phase switch · 策略 -->
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                        <Button x:Name="StrategyTab" DockPanel.Dock="Right" Height="34" Padding="12,0" Margin="8,0,0,0"
-                                Style="{StaticResource DialogSecondaryButton}" Click="OnStrategyTabClick">
-                            <StackPanel Orientation="Horizontal">
-                                <Viewbox Width="12" Height="12" Margin="0,0,6,0">
-                                    <Canvas Width="24" Height="24">
-                                        <Path Data="{StaticResource IconStar}" StrokeThickness="2" StrokeLineJoin="Round"
-                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                                    </Canvas>
-                                </Viewbox>
-                                <TextBlock x:Name="StrategyTabText" Text="策略" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
-                        <Border DockPanel.Dock="Right" Margin="8,0,0,0" Padding="3" CornerRadius="{DynamicResource RowCornerRadius}" BorderThickness="1"
+                    <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                        <DockPanel>
+                            <Button x:Name="StrategyTab" DockPanel.Dock="Right" Height="34" Padding="12,0" Margin="8,0,0,0"
+                                    Style="{StaticResource DialogSecondaryButton}" Click="OnStrategyTabClick">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="12" Height="12" Margin="0,0,6,0">
+                                        <Canvas Width="24" Height="24">
+                                            <Path Data="{StaticResource IconStar}" StrokeThickness="2" StrokeLineJoin="Round"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                        </Canvas>
+                                    </Viewbox>
+                                    <TextBlock x:Name="StrategyTabText" Text="策略" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <TextBox Style="{StaticResource DialogTextBox}" x:Name="LineupNameBox" FontSize="14" FontWeight="Bold" MinHeight="34"
+                                     Padding="10,4" VerticalContentAlignment="Center" TextChanged="OnLineupNameChanged" ToolTip="阵容名" />
+                        </DockPanel>
+                        <Border x:Name="RoundStagesPanel" Visibility="Collapsed" Margin="0,8,0,0" Padding="3"
+                                CornerRadius="{DynamicResource RowCornerRadius}" BorderThickness="1"
                                 Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}">
-                            <StackPanel x:Name="PhaseTabs" Orientation="Horizontal" />
+                            <WrapPanel x:Name="RoundStageTabs" />
                         </Border>
-                        <TextBox Style="{StaticResource DialogTextBox}" x:Name="LineupNameBox" FontSize="14" FontWeight="Bold" MinHeight="34"
-                                 Padding="10,4" VerticalContentAlignment="Center" TextChanged="OnLineupNameChanged" ToolTip="阵容名" />
-                    </DockPanel>
+                        <Expander x:Name="ManualStagesExpander" Header="手动阶段" IsExpanded="True" Margin="0,7,0,0"
+                                  Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11">
+                            <Border Margin="0,4,0,0" Padding="3" CornerRadius="{DynamicResource RowCornerRadius}" BorderThickness="1"
+                                    Background="{DynamicResource CardBackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}">
+                                <WrapPanel x:Name="PhaseTabs" />
+                            </Border>
+                        </Expander>
+                        <TextBlock x:Name="CurrentStageText" FontSize="11" Margin="1,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
@@ -263,6 +274,62 @@
                         BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="14,14,14,12">
+                            <StackPanel x:Name="CurrentStageGuidePanel" Visibility="Collapsed" Margin="0,0,0,16">
+                                <TextBlock x:Name="CurrentStageGuideTitle" Text="本阶段攻略参考" Style="{StaticResource FilterSectionTitle}" TextWrapping="Wrap" />
+                                <TextBlock Text="原文快照供编辑时参考；修改阵容会保存在当前阶段。"
+                                           FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,8" />
+                                <TextBlock Text="运营思路" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,5" />
+                                <TextBox x:Name="CurrentStageNotesText" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
+                                         Style="{StaticResource DialogTextBox}" Padding="7" MinHeight="48" MaxHeight="180"
+                                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" />
+                                <TextBlock Text="独立推荐装备" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,12,0,4" />
+                                <TextBlock Text="作者未指定佩戴者，未自动分配。" FontSize="10" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+                                <ItemsControl x:Name="CurrentStageEquipmentHost">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="6,4" Margin="0,0,5,5" Background="{DynamicResource SectionBackgroundBrush}"
+                                                    CornerRadius="{DynamicResource RowCornerRadius}" MaxWidth="210">
+                                                <Border.ToolTip>
+                                                    <ToolTip>
+                                                        <StackPanel MaxWidth="340">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                                            <TextBlock Text="{Binding DisplayDescription}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                                                            <TextBlock Text="{Binding ItemId}" FontSize="10" Margin="0,5,0,0" />
+                                                        </StackPanel>
+                                                    </ToolTip>
+                                                </Border.ToolTip>
+                                                <TextBlock Text="{Binding Name}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock x:Name="CurrentStageEquipmentEmpty" Text="原文未推荐装备" FontSize="10"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Expander Header="原文技能与模组" FontSize="11" Margin="0,9,0,0"
+                                          Foreground="{DynamicResource TextSecondaryBrush}" IsExpanded="False">
+                                    <ItemsControl x:Name="CurrentStageOperatorsHost" Margin="0,7,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="6" Margin="0,0,0,5" Background="{DynamicResource SectionBackgroundBrush}"
+                                                        CornerRadius="{DynamicResource RowCornerRadius}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding OperatorName}" FontSize="11" FontWeight="Bold" TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0"
+                                                                   ToolTip="{Binding SkillId}" Text="{Binding SkillDisplay, StringFormat=技能：{0}}" />
+                                                        <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"
+                                                                   ToolTip="{Binding ModuleId}" Text="{Binding ModuleDisplay, StringFormat=模组：{0}}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+                                <TextBlock x:Name="CurrentStageGuideWarning" Visibility="Collapsed" FontSize="10" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource DangerBrush}" Margin="0,7,0,0"
+                                           Text="原文存在无效条目，请核对攻略流程。" />
+                            </StackPanel>
                             <TextBlock Text="盟约" Style="{StaticResource FilterSectionTitle}" Margin="0,0,0,8" />
                             <StackPanel x:Name="CovenantList" />
                             <TextBlock x:Name="CovenantEmpty" Text="还没有盟约" FontSize="11" Margin="0,0,0,4"

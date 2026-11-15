@@ -61,7 +61,8 @@ public sealed class LineupEquipmentService(IDictionary<string, string> equipment
     public bool Upgrade(Lineup lineup)
     {
         var changed = false;
-        foreach (var slot in lineup.Slots.Concat(lineup.EarlySlots).Concat(lineup.MidSlots).Concat(lineup.SupportSlots))
+        foreach (var slot in lineup.Slots.Concat(lineup.EarlySlots).Concat(lineup.MidSlots).Concat(lineup.SupportSlots)
+            .Concat((lineup.RoundStages ?? []).Where(stage => stage is not null).SelectMany(stage => stage.Slots ?? [])))
             changed |= UpgradeSlot(slot);
         return changed;
     }

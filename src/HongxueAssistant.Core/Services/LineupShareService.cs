@@ -51,7 +51,8 @@ public class LineupShareService
         var json = JsonSerializer.Serialize(lineup, JsonOptions);
         var fingerprint = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
         {
-            lineup.Name, lineup.Slots, lineup.EarlySlots, lineup.MidSlots, lineup.SupportSlots, lineup.Strategies, lineup.SourceUrl, lineup.Guide
+            lineup.Name, lineup.Slots, lineup.EarlySlots, lineup.MidSlots, lineup.SupportSlots, lineup.Strategies, lineup.SourceUrl, lineup.Guide,
+            RoundStages = lineup.RoundStages is { Count: > 0 } ? lineup.RoundStages : null
         }, JsonOptions)));
 
         await _exportGate.WaitAsync(ct);

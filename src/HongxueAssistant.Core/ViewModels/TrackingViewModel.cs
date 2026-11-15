@@ -196,8 +196,14 @@ public partial class TrackingViewModel : ObservableObject
         }
         _trackedLineups.RemoveAll(l => l.Id == lineup.Id);
         _trackedLineups.Add(new TrackedLineup(lineup.Id, lineup.Name, highlight));
+        var roundStages = (lineup.RoundStages is { Count: > 0 }
+            ? lineup.RoundStages : LineupRoundStage.FromGuide(lineup.Guide)).Where(stage => stage is not null).ToArray();
+        // Keep final and legacy phase precedence. Among round-only entries prefer the latest round's configuration.
         var phases = new[] { (Slots: lineup.Slots, Phase: "后期"), (Slots: lineup.MidSlots, Phase: "中期"),
-            (Slots: lineup.EarlySlots, Phase: "前期"), (Slots: lineup.SupportSlots, Phase: "挂件") };
+            (Slots: lineup.EarlySlots, Phase: "前期"), (Slots: lineup.SupportSlots, Phase: "挂件") }
+            .Concat(roundStages.Reverse().Select(stage => (Slots: stage.Slots ?? [], Phase: stage.DisplayTitle))).ToArray();
+        var transitionNames = new[] { "前期", "中期", "挂件" }
+            .Concat(roundStages.Select(stage => stage.DisplayTitle)).Distinct().ToArray();
         foreach (var group in phases.SelectMany(p => p.Slots.Select(slot => (Slot: slot, p.Phase)))
             .Where(p => p.Slot.OperatorName.Length > 0).GroupBy(p => p.Slot.OperatorName))
         {
@@ -207,7 +213,7 @@ public partial class TrackingViewModel : ObservableObject
             var entry = new TrackingEntry
             {
                 Name = slot.OperatorName, Type = TrackingType.Operator, Role = role,
-                Stages = role == TrackingRole.Final ? "" : string.Join(" · ", new[] { "前期", "中期", "挂件" }.Where(name => group.Any(p => p.Phase == name))),
+                Stages = role == TrackingRole.Final ? "" : string.Join(" · ", transitionNames.Where(name => group.Any(p => p.Phase == name))),
                 TransformedCovenant = slot.TransformedCovenant, Equipments = [.. slot.Equipments], IsElite = slot.IsElite
             };
             var origins = existing is null ? new List<TrackingOrigin>() : existing.Origins.Count > 0

@@ -33,10 +33,12 @@ public partial class LineupEditorWindow : Window
             SourcePanel.Visibility = Visibility.Visible;
             SourceUrlBox.Text = vm.SourceUrl;
             ImportNoticeText.Text = vm.Guide is { Tabs.Count: > 0 }
-                ? "攻略的回合阵容、推荐装备、运营思路及技能模组已保留，可打开攻略流程查看。"
+                ? "成型阵容与各回合已独立保留，可切换阶段直接编辑；右侧显示对应运营思路、推荐装备和原文技能模组。"
                 : "来自官方攻略；旧阵容未保留完整流程，可重新导入来源链接。";
         }
         GuideFlowButton.Visibility = vm.Guide is { Tabs.Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
+        ManualStagesExpander.Header = vm.HasRoundStages ? "手动阶段与挂件" : "手动阶段";
+        ManualStagesExpander.IsExpanded = !vm.HasRoundStages;
         foreach (var phase in Enum.GetValues<LineupPhase>())
         {
             var button = new Button { Style = (Style)FindResource("PhaseSegment"), DataContext = phase };
@@ -86,15 +88,19 @@ public partial class LineupEditorWindow : Window
             {
                 Inlines =
                 {
-                    new System.Windows.Documents.Run(phase.ToString()),
+                    new System.Windows.Documents.Run(_vm.HasRoundStages && phase == LineupPhase.后期 ? "成型阵容" : phase.ToString()),
                     new System.Windows.Documents.Run(count > 0 ? $" {count}" : "")
                     {
                         FontFamily = (FontFamily)FindResource("NumberFontFamily"), FontSize = 11
                     }
                 }
             };
-            button.Tag = !_editingStrategies && _vm.CurrentPhase == phase ? "active" : null;
+            button.Tag = !_editingStrategies && _vm.CurrentRoundStageIndex < 0 && _vm.CurrentPhase == phase ? "active" : null;
         }
+        RefreshRoundStageTabs();
+        RefreshCurrentStageGuide();
+        CurrentStageText.Text = _editingStrategies ? "正在编辑策略 · 所有阶段共用" : $"正在编辑：{_vm.CurrentStageTitle}";
+        ClearStageButton.ToolTip = _editingStrategies ? "仅清空策略页" : $"仅清空{_vm.CurrentStageTitle}，其他阶段保留";
         var strategyCount = _vm.StrategySlots.Count(s => s.StrategyId.Length > 0);
         StrategyTabText.Text = strategyCount > 0 ? $"策略 · {strategyCount}" : "策略";
         StrategyTab.Tag = _editingStrategies ? "active" : null;
@@ -104,6 +110,65 @@ public partial class LineupEditorWindow : Window
             .Select(s => _strategies.FirstOrDefault(x => x.Id == s.StrategyId)?.Name ?? s.StrategyId).Take(2));
         BuildCards();
         RefreshSidePanel();
+    }
+
+    private void RefreshRoundStageTabs()
+    {
+        RoundStageTabs.Children.Clear();
+        RoundStagesPanel.Visibility = _vm.HasRoundStages ? Visibility.Visible : Visibility.Collapsed;
+        if (!_vm.HasRoundStages) return;
+        RoundStageTabs.Children.Add(StageButton("成型阵容", _vm.FilledCount(LineupPhase.后期),
+            !_editingStrategies && _vm.CurrentRoundStageIndex < 0 && _vm.CurrentPhase == LineupPhase.后期,
+            LineupPhase.后期, () => _vm.SelectPhase(LineupPhase.后期)));
+        var stages = _vm.RoundStages;
+        for (var index = 0; index < stages.Count; index++)
+        {
+            var stageIndex = index;
+            var stage = stages[index];
+            RoundStageTabs.Children.Add(StageButton(stage.DisplayTitle, _vm.FilledRoundCount(index),
+                !_editingStrategies && _vm.CurrentRoundStageIndex == index, stageIndex,
+                () => _vm.SelectRoundStage(stageIndex)));
+        }
+    }
+
+    private Button StageButton(string title, int count, bool active, object dataContext, Action select)
+    {
+        var button = new Button
+        {
+            Style = (Style)FindResource("PhaseSegment"), DataContext = dataContext,
+            Content = count > 0 ? $"{title} {count}" : title,
+            Tag = active ? "active" : null, Margin = new Thickness(0, 0, 3, 3),
+            ToolTip = $"编辑{title} · {count} 人，修改保留在本阶段"
+        };
+        System.Windows.Automation.AutomationProperties.SetName(button, title);
+        button.Click += (_, _) =>
+        {
+            _editingStrategies = false;
+            select();
+            RefreshEditor();
+        };
+        return button;
+    }
+
+    private void RefreshCurrentStageGuide()
+    {
+        var tabIndex = _vm.CurrentGuideTabIndex;
+        var tab = !_editingStrategies && _vm.Guide is { } guide && tabIndex >= 0 && tabIndex < guide.Tabs.Count
+            ? guide.Tabs[tabIndex] : null;
+        CurrentStageGuidePanel.Visibility = tab is null ? Visibility.Collapsed : Visibility.Visible;
+        if (tab is null)
+        {
+            CurrentStageNotesText.Text = "";
+            CurrentStageEquipmentHost.ItemsSource = null;
+            CurrentStageOperatorsHost.ItemsSource = null;
+            return;
+        }
+        CurrentStageGuideTitle.Text = $"{_vm.CurrentStageTitle} · 攻略参考";
+        CurrentStageNotesText.Text = string.IsNullOrWhiteSpace(tab.OperationIdea) ? "此阶段未填写运营思路。" : tab.OperationIdea;
+        CurrentStageEquipmentHost.ItemsSource = tab.Equipment;
+        CurrentStageEquipmentEmpty.Visibility = tab.Equipment.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CurrentStageOperatorsHost.ItemsSource = tab.Operators;
+        CurrentStageGuideWarning.Visibility = tab.HasInvalidEntries ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnTitleBarDrag(object sender, MouseButtonEventArgs e)
@@ -139,7 +204,7 @@ public partial class LineupEditorWindow : Window
 
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
-        if (!ConfirmDialog.Ask(this, "撤销修改", "恢复到本次打开编辑器时的状态？本次未保存的修改将被撤销。", "撤销"))
+        if (!ConfirmDialog.Ask(this, "撤销修改", "恢复本次打开时的全部阶段、回合、策略与名称？本次未保存的修改将被撤销。", "撤销"))
             return;
         _vm.Reset();
         _editingStrategies = false;
@@ -149,7 +214,7 @@ public partial class LineupEditorWindow : Window
 
     private void OnClearClick(object sender, RoutedEventArgs e)
     {
-        var contents = _editingStrategies ? "策略页的策略和标签" : $"{_vm.CurrentPhase}的干员、装备和标签";
+        var contents = _editingStrategies ? "策略页的策略和标签" : $"{_vm.CurrentStageTitle}的干员、装备和标签";
         if (!ConfirmDialog.Ask(this, "清空本阶段", $"清空{contents}？阵容名称和其他阶段保留，保存前不会改动已保存的阵容。", "清空", danger: true))
             return;
         if (_editingStrategies) _vm.ClearStrategies();
@@ -556,7 +621,7 @@ public partial class LineupEditorWindow : Window
         var empty = _editingStrategies ? 0 : LineupEditorViewModel.MaxSlots - _vm.FilledSlotCount;
         EditorHint.Text = error.Length > 0 ? error
             : _editingStrategies ? "一局只会带其中一个策略；标记“核心”的会写进规划"
-            : empty > 0 && _vm.FilledSlotCount > 0 ? $"{_vm.CurrentPhase}还有 {empty} 个空位" : $"正在编辑{_vm.CurrentPhase} · 列表预览与追踪使用后期阵容";
+            : empty > 0 && _vm.FilledSlotCount > 0 ? $"{_vm.CurrentStageTitle}还有 {empty} 个空位" : $"正在编辑{_vm.CurrentStageTitle} · 保存将保留全部阶段";
         EditorHint.ToolTip = error.Length > 0 ? error : null;
         EditorHint.SetResourceReference(TextBlock.ForegroundProperty, error.Length > 0 ? "TransitionTextBrush" : "TextSecondaryBrush");
     }

@@ -258,7 +258,10 @@ public class SklandGuideImporterTests
     private static string CandidateGuide(IReadOnlyList<Operator> candidates)
     {
         var json = JsonNode.Parse(Fixture)!;
-        var chars = json["data"]!["guide"]!["guide"]!["tabs"]![0]!["recChars"]!.AsArray();
+        // This synthetic fixture tests final-candidate grouping only. The full-round fixture covers transitions.
+        var tabs = json["data"]!["guide"]!["guide"]!["tabs"]!.AsArray();
+        while (tabs.Count > 1) tabs.RemoveAt(tabs.Count - 1);
+        var chars = tabs[0]!["recChars"]!.AsArray();
         chars.Clear();
         var resource = json["data"]!["seasonResourceMap"]!["act3autochess"]!["versionResourceMap"]!["V3_1"]!["chars"]!;
         for (var i = 0; i < candidates.Count; i++)
