@@ -169,7 +169,7 @@ internal static class EmulatorFixViewTests
         panel.Topmost.Should().BeFalse();
         (User32.GetWindowLong(hwnd, User32.GWL_EXSTYLE) & 8).Should().Be(0);
         panel.UpdateTopmost(gameHwnd, hwnd);
-        panel.Topmost.Should().BeFalse("clicking an inactive assistant alone does not force topmost");
+        panel.Topmost.Should().BeTrue("returning directly to the assistant restores topmost");
         panel.UpdateTopmost(gameHwnd, gameHwnd);
         panel.UpdateTopmost(IntPtr.Zero, gameHwnd);
         panel.Topmost.Should().BeFalse();

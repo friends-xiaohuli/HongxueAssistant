@@ -1,11 +1,11 @@
 # 本地增强与后续同步
 
 当前上游基底：`v1.9.0`，提交 `13e97c49620d6b99b4d29e7811464f063f5e86cd`。
-本地源码版本：`1.9.0-alpha1`。行为对比和保留理由见 [同步审计](UPSTREAM_1.9.0_AUDIT.md)。
+本地源码版本：`1.9.0-alpha2`。行为对比和保留理由见 [同步审计](UPSTREAM_1.9.0_AUDIT.md)。
 
 ## 同步原则
 
-- 常规功能、界面、Ban、焦点、沉底、吸附与模拟器连接优先采用上游实现。
+- 常规功能、界面、Ban、吸附与模拟器连接优先采用上游实现。窗口焦点按本地需求补强：从其他软件直接点回助手或所属弹窗也可恢复置顶，切走后沉底。
 - 配置固定为 `%APPDATA%\HongxueAssistant`，使用上游的安全迁移、备份、缺项合并和阵容删除标记保护。
 - 保留完整森空岛攻略及作者真实回合独立编辑、复制、撤销、保存、分享、修补与追踪，兼容上游候选装备和目标盟约。
 - 保留已由用户图片验证的完整盟约池补扫、同屏滚动、切屏丢弃旧 OCR 和隐藏 owner 置顶修复。
@@ -37,8 +37,8 @@ git push origin main
 以当前基底打包时：
 
 ```powershell
-dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.9.0-alpha1 -o publish/HongxueAssistant-v1.9.0-alpha1-win-x64
-./tools/Verify-Package.ps1 -PackageDirectory publish/HongxueAssistant-v1.9.0-alpha1-win-x64
+dotnet publish src/HongxueAssistant.App/HongxueAssistant.App.csproj -c Release -r win-x64 --self-contained true -p:Version=1.9.0-alpha2 -o publish/HongxueAssistant-v1.9.0-alpha2-win-x64
+./tools/Verify-Package.ps1 -PackageDirectory publish/HongxueAssistant-v1.9.0-alpha2-win-x64
 ```
 
 ZIP 与顶层文件夹同名，实际程序为 `HongxueAssistant.exe`。保留 data、runtimes、MaaAgentBinary、VC++ 运行库、LICENSE、LICENSE.upstream、NOTICE。

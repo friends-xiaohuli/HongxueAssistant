@@ -81,6 +81,12 @@ public class ThemeAndHighlightTests(WpfTestHost ui) : IClassFixture<WpfTestHost>
     public Task OperatorPicker_VirtualizesTwoColumns(GameShopTheme theme, bool night)
         => ui.RunAsync(() => OperatorPickerPerformanceViewTests.VerifyVirtualization(theme, night), $"OperatorPicker-Virtualization-{theme}-{night}");
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public Task AssistantAndDialogsRegainTopmostAfterOtherApps(bool showInTaskbar)
+        => ui.RunAsync(() => PanelFocusReturnViewTests.Verify(showInTaskbar), $"{nameof(AssistantAndDialogsRegainTopmostAfterOtherApps)}-{showInTaskbar}");
+
     [Fact]
     public Task LocalWindowAndSuspendedPicks() => ui.RunAsync(LocalWindowCompatibilityTests.Verify, nameof(LocalWindowAndSuspendedPicks));
 

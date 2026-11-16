@@ -634,18 +634,35 @@ public partial class SidePanelWindow : Window
         UpdateTopmost(IntPtr.Zero, IntPtr.Zero);
     }
 
+    /// <summary>Game, assistant and owned dialogs can raise the panel again after another app had focus.</summary>
     public void UpdateTopmost(IntPtr game, IntPtr foreground)
     {
         var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !User32.IsWindow(hwnd)) return;
         var ownedFocus = foreground;
         while (ownedFocus != IntPtr.Zero && ownedFocus != hwnd)
-            ownedFocus = User32.GetWindow(ownedFocus, 4); // GW_OWNER includes editor and selection dialogs.
+            ownedFocus = User32.GetWindow(ownedFocus, 4); // GW_OWNER includes nested selection dialogs.
+        var assistantFocused = ownedFocus == hwnd;
         var topmost = game != IntPtr.Zero && User32.IsWindow(game) && !User32.IsIconic(game)
             && !IsAssistantHidden && WindowState == WindowState.Normal
-            && (foreground == game || Topmost && ownedFocus == hwnd);
-        if (Topmost == topmost && ((User32.GetWindowLong(hwnd, User32.GWL_EXSTYLE) & 8) != 0) == topmost) return;
-        Topmost = topmost;
-        User32.SetWindowLayer(hwnd, topmost);
+            && (foreground == game || assistantFocused);
+        ApplyTopmost(topmost);
+        // Re-raising the owner does not always restore an already open dialog's native layer.
+        if (topmost && assistantFocused && foreground != hwnd
+            && (User32.GetWindowLong(foreground, User32.GWL_EXSTYLE) & 8) == 0)
+            User32.SetWindowLayer(foreground, true);
+    }
+
+    private void ApplyTopmost(bool topmost)
+    {
+        var changed = Topmost != topmost;
+        if (changed) Topmost = topmost;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !User32.IsWindow(hwnd)) return;
+        var nativeTopmost = (User32.GetWindowLong(hwnd, User32.GWL_EXSTYLE) & 8) != 0;
+        // Match the previous local behavior: repair only when needed, and lower once on focus loss.
+        if (topmost && !nativeTopmost || !topmost && (changed || nativeTopmost))
+            User32.SetWindowLayer(hwnd, topmost);
     }
 
     public void UpdatePosition(RECT gameRect, bool isFullscreen)

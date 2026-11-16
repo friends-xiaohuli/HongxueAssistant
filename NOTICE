@@ -63,3 +63,7 @@ Keeps the HongxueAssistant profile/update feed and editable author round lineups
 integrates target covenants, candidate equipment, repair, sharing and tracking.
 Retains complete-information/source guards and fixes native window-layer handling
 for WPF hidden owners while adopting upstream focus, snap and covenant Ban rules.
+
+Direct assistant and owned-dialog focus return, 2026-11-16: restores topmost
+when returning from another app, uses conditional native layer repair and
+keeps focus-loss lowering and hidden/minimized/game-lost guards.

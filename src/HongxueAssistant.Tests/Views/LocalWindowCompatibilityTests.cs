@@ -38,7 +38,7 @@ internal static class LocalWindowCompatibilityTests
             var dh = new WindowInteropHelper(dialog).Handle;
             var oh = new WindowInteropHelper(other).Handle;
             panel.Topmost.Should().BeFalse();
-            panel.UpdateTopmost(gh, ph); panel.Topmost.Should().BeFalse();
+            panel.UpdateTopmost(gh, ph); Check(true);
             panel.UpdateTopmost(gh, gh); Check(true);
             panel.UpdateTopmost(gh, dh); Check(true);
             panel.UpdateTopmost(gh, oh); Check(false);
@@ -46,7 +46,7 @@ internal static class LocalWindowCompatibilityTests
             for (var h = User32.GetWindow(oh, 2); h != IntPtr.Zero; h = User32.GetWindow(h, 2))
                 if (h == ph) { below = true; break; }
             below.Should().BeTrue("losing game focus lowers the assistant");
-            panel.UpdateTopmost(gh, ph); Check(false);
+            panel.UpdateTopmost(gh, ph); Check(true);
             panel.UpdateTopmost(gh, gh); Check(true);
             panel.ClearGamePosition(); Check(false);
             var before = User32.ReadWindowRect(ph);

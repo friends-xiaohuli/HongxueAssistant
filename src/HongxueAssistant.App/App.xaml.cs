@@ -434,6 +434,7 @@ public partial class App : Application
 
         void UpdateOverlayPosition(bool refreshShopItems)
         {
+            if (!sidePanel.IsLoaded || Dispatcher.HasShutdownStarted) return;
             var foreground = Core.Interop.User32.GetForegroundWindow();
             sidePanel.UpdateTopmost(_windowTracker.CurrentGameWindowHandle, foreground);
             var panelHandle = new System.Windows.Interop.WindowInteropHelper(sidePanel).Handle;
@@ -451,6 +452,7 @@ public partial class App : Application
         }
 
         // Wire window tracker → window positioning
+        sidePanel.Activated += (_, _) => Dispatcher.BeginInvoke(() => UpdateOverlayPosition(false));
         sidePanel.Deactivated += (_, _) => Dispatcher.BeginInvoke(() => UpdateOverlayPosition(false));
         _windowTracker.GameWindowFocusChanged += _ => Dispatcher.Invoke(() => UpdateOverlayPosition(false));
         _windowTracker.GameWindowMoved += rect =>

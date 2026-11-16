@@ -1,7 +1,7 @@
 # 上游 1.9.0 同步与行为审计
 
 审计日期：2026-11-16。上游代码基底为 `v1.9.0` / `13e97c49620d6b99b4d29e7811464f063f5e86cd`，通过真实 Git merge 保留原始历史。同步时 `upstream/main` 为 `77b583df0f5615af36cae0d1aa79629b1c6d57e2`，文件树与该标签一致。
-同步前本地为 `14f6be3` / `1.8.0-alpha4`；本次源码为 `1.9.0-alpha1`。常规规则优先采用上游，以下列明保留项、差异和已发现的问题。
+同步前本地为 `14f6be3` / `1.8.0-alpha4`；首次同步源码为 `1.9.0-alpha1`。其后按用户明确的焦点需求补强为 `1.9.0-alpha2`；相关修正在下文注明。
 
 ## 功能核对
 
@@ -12,8 +12,8 @@
 | 物理截图编号 | 上游和旧本地都区分逻辑与物理编号；上游允许显示缺少物理编号的条目，但在实际截图前明确报错 | 采用上游 Maa ADB。`screencap -d` 使用物理编号，`input -d` 使用逻辑编号；非零逻辑屏缺物理编号不回退默认屏。[截图与输入编号](../src/HongxueAssistant.Core/Services/AdbGameScreens.cs#L84) |
 | 默认屏滚动 | 旧本地直接发 `input -d 0 swipe`；上游对默认屏省略 `-d`，兼容 Android 9 | 采用上游命令；发手势前同时核对包名、逻辑编号和物理编号。[同屏滚动](../src/HongxueAssistant.Core/Services/GameConnectionService.cs#L259) |
 | 切屏后的旧识别 | 两边都有版本号；上游主要在采集时更新，本地会在结果发布前再检查 | 采用上游主体，补回发布前重查与滚动拒绝时立即作废旧版本；异常发现不发手势。[旧结果校验](../src/HongxueAssistant.Core/Services/GameConnectionService.cs#L229) |
-| 置顶 / 聚焦 | 两边均由游戏聚焦触发；助手或其所属对话框只能延续已经置顶的状态。旧本地允许非最小化状态，上游要求 Normal | 采用上游条件：失焦后再单独点击助手不会强制置顶。[焦点规则](../src/HongxueAssistant.App/Windows/SidePanelWindow.xaml.cs#L637) |
-| 沉底与原生置顶 | 两边由置顶切到失焦时均用 HWND_BOTTOM；状态已一致时不会每帧重排层级。上游未保留隐藏 owner 的层级，原生测试复现 WPF Topmost=true 但 WS_EX_TOPMOST=false | 修复抬升时的 `SWP_NOOWNERZORDER`，不改变上游触发规则；游戏丢失立即清理状态。[原生层级](../src/HongxueAssistant.Core/Interop/User32.cs#L43) |
+| 置顶 / 聚焦 | 两边均由游戏聚焦触发；助手或其所属对话框只能延续已经置顶的状态。旧本地允许非最小化状态，上游要求 Normal | alpha1 采用上游条件；alpha2 改为从其他软件直接点击助手或所属弹窗也恢复置顶，切走再沉底。[焦点规则](../src/HongxueAssistant.App/Windows/SidePanelWindow.xaml.cs#L638) |
+| 沉底与原生置顶 | 两边由置顶切到失焦时均用 HWND_BOTTOM；状态已一致时不会每帧重排层级。上游未保留隐藏 owner 的层级，原生测试复现 WPF Topmost=true 但 WS_EX_TOPMOST=false | 保留 `SWP_NOOWNERZORDER`，alpha2 恢复按需更新层级，并补齐当前所属弹窗的原生置顶；游戏丢失立即清理状态。[原生层级](../src/HongxueAssistant.Core/Interop/User32.cs#L43) |
 | 轻微吸附 | 两边均为约 12 DIP、拖动松手生效、调整大小不吸附。旧本地允许另一轴近似相邻，上游要求实际重叠，并约束工作区 | 采用上游吸附；动态真实回合按钮保持换行，手动阶段仍使用上游横排。[吸附](../src/HongxueAssistant.Core/Services/WindowGeometry.cs#L47) |
 | 核心 / 附加 Ban | 旧本地普通页把两类盟约合并，可能让核心已禁的干员继续可用；分组页还有额外分支 | 统一上游：有核心则全部核心被禁时不可用；无核心才看全部附加盟约。分组元信息不改变规则。[Ban 判定](../src/HongxueAssistant.Core/Services/CovenantBanRules.cs#L19) |
 | 被 Ban 的必带 | 上游已实现保留选择、停用、不计入请求，解除后恢复 | 直接采用上游，取消或清空才删除；[有效必带](../src/HongxueAssistant.Core/ViewModels/LineupPlannerViewModel.cs#L617)、[规划请求](../src/HongxueAssistant.Core/ViewModels/LineupPlannerViewModel.cs#L1047) |
@@ -48,3 +48,14 @@
 - Python 数据回归：33 通过。
 - Release 编译无新增警告或错误。未向真实 PC 游戏、MuMu 或雷电发送输入。
 - 已发布 alpha2 ZIP SHA256 仍为 `06a80662fdc9df93e0f37150a5cbf1043d8268c37530cdc6b5a2d3c502bb10b3`；本轮不打包。
+
+## alpha2 焦点返回复核
+
+用户补充的实际需求：从其他软件直接点回助手或弹窗时，应能重新保持在前面。
+对照旧本地 1.8.0-alpha2 / alpha4、原始上游 1.9.0 与同步后的 alpha1，三者都使用“已经置顶且焦点在助手所属窗口”这一门槛；因此仅比较该条件，不能把用户感受全部归因于上游版本。原始上游额外存在隐藏 owner 的原生层级差异，alpha1 已修复。
+
+alpha2 删除“必须已经置顶”的门槛，助手本身或任意层级所属弹窗获取焦点时即可再次置顶；回到其他软件时沉底。恢复旧本地的按需原生修复顺序，避免已经正确时再次抬升，并补齐已打开弹窗的原生层级。`App.xaml.cs` 增加助手 Activated 更新与载入／关闭保护。
+
+隔离 Win32 测试分别覆盖显示和隐藏任务栏按钮的窗口：其他软件 → 助手、其他软件 → 编辑器、其他软件 → 嵌套弹窗、原生状态延迟、隐藏、最小化、恢复及游戏丢失。没有操作真实游戏。源码版本为 1.9.0-alpha2，本轮不打包。
+
+alpha2 相关回归：21 通过、0 失败；Release 编译成功。本轮按改动范围验证窗口、弹窗、托盘、快捷键及对局信息，未重复 alpha1 的完整回归。
